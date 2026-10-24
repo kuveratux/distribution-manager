@@ -46,8 +46,8 @@
   .card{position:relative;background:linear-gradient(180deg,var(--card) 0%,var(--card-2) 100%);border:1px solid var(--edge);border-radius:14px;padding:14px;margin-bottom:10px}
   .card::before{content:'';position:absolute;top:-1px;left:18%;right:18%;height:2px;border-radius:2px;
     background:linear-gradient(90deg,transparent,var(--gold-1),transparent);box-shadow:0 0 14px 3px var(--glow);pointer-events:none}
-  .head{display:grid;grid-template-columns:3fr 1fr;gap:10px}
-  .next{border-left:1px solid var(--line);padding-left:10px;display:flex;flex-direction:column;justify-content:center}
+  .head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px}  /* 次回分配予定の欄は文字の幅ぴったり */
+  .next{border-left:1px solid var(--line);padding-left:8px;display:flex;flex-direction:column;justify-content:center;white-space:nowrap}
   .next .d{font-size:20px;font-weight:bold;line-height:1.2;color:var(--text)}
   .next .y{font-size:11px;color:var(--muted)}
   .hero-row{display:flex;align-items:center;gap:8px}
@@ -136,7 +136,7 @@
   .tip .t{color:var(--muted);margin-bottom:2px}
   .mark{font-size:30px;line-height:1;padding-right:6px}
   /* ウォレット残高の状態の記号：目のマークの右端から、次回分配予定の区切り線（.head のすき間 10px の先）までのちょうど真ん中 */
-  .mark.mid{flex:1;text-align:center;padding:0;margin-right:-10px}
+  .mark.mid{flex:1;text-align:center;padding:0;margin:0 -10px 0 -8px}  /* 左は .hero-row のすき間 8px、右は .head のすき間 10px を打ち消す */
   /* 目のマーク（EARN VIEWER と同じく残高の横） */
   .eye{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;padding:0;border-radius:50%;flex:none;cursor:pointer;
     background:var(--card-2);border:1px solid var(--edge);color:var(--muted)}
@@ -349,7 +349,7 @@ function nextDist(){
   if(!last) return '';
   const n = toDate(last.d); n.setMonth(n.getMonth()+DIST_MONTHS); n.setHours(0,0,0,0);
   const days = Math.round((n - TODAY)/86400000);
-  return `<div class="next"><span class="label">次回分配予定</span><span class="d">${shortD(n)}</span><span class="y">${n.getFullYear()}年・あと${days}日</span></div>`;
+  return `<div class="next"><span class="label">次回分配予定</span><span class="d">${shortD(n)}</span><span class="y">あと${days}日</span></div>`;
 }
 
 // 分配＝支出＋ウォレット＋未受領
@@ -801,7 +801,7 @@ function setView(){
   h += `<h2>この端末</h2><div class="card">
     <button class="btn sub" onclick="forgetPass()" ${localStorage.getItem('dist-manager-pass') ? '' : 'disabled'}>覚えた合言葉を消す</button>
     <button class="btn ng" onclick="clearData()" ${DATA ? '' : 'disabled'}>データを消す</button></div>`;
-  h += `<h2>アプリ</h2><div class="card"><div class="kv"><span class="kk">版</span><span>0.3.4</span></div></div>`;
+  h += `<h2>アプリ</h2><div class="card"><div class="kv"><span class="kk">版</span><span>0.3.5</span></div></div>`;
   return h;
 }
 function noData(){
