@@ -135,6 +135,8 @@
   .tip{position:absolute;pointer-events:none;background:#0a0805;border:1px solid var(--edge);border-radius:8px;padding:6px 8px;font-size:11px;color:var(--text);white-space:nowrap;display:none;z-index:2}
   .tip .t{color:var(--muted);margin-bottom:2px}
   .mark{font-size:30px;line-height:1;padding-right:6px}
+  /* ウォレット残高の状態の記号：目のマークの右端から、次回分配予定の区切り線（.head のすき間 10px の先）までのちょうど真ん中 */
+  .mark.mid{flex:1;text-align:center;padding:0;margin-right:-10px}
   /* 目のマーク（EARN VIEWER と同じく残高の横） */
   .eye{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;padding:0;border-radius:50%;flex:none;cursor:pointer;
     background:var(--card-2);border:1px solid var(--edge);color:var(--muted)}
@@ -560,9 +562,9 @@ function meBal(){
   const hand = addr + third, ok = hand + 1e-9 >= tot.held;
   const r = tot.held ? hand/tot.held : 9, mk = MARKS.find(m=>r+1e-9>=m[0]);
   const unsorted = txs.filter(t=>t.kind==='out'&&!t.cls).length;
-  let h = `<div class="card"><div class="head"><div style="display:flex;align-items:center;gap:8px"><div style="flex:1"><div class="label">ウォレット残高<span class="rate">（${showD(DATA.walletBalance.at.replace(/-/g,'/'))} 時点）</span></div>
-    <div class="hero-row"><div class="big hero">${f2(addr)}<span class="unit">USDT</span></div>${eyeBtn()}</div>
-    <div class="yen">${yen(addr)}</div></div><span class="mark" style="color:${mk[2]}" title="${mk[3]}">${mk[1]}</span></div>${nextDist()}</div>${rateLine()}
+  let h = `<div class="card"><div class="head"><div><div class="label">ウォレット残高<span class="rate">（${showD(DATA.walletBalance.at.replace(/-/g,'/'))} 時点）</span></div>
+    <div class="hero-row"><div class="big hero">${f2(addr)}<span class="unit">USDT</span></div>${eyeBtn()}<span class="mark mid" style="color:${mk[2]}" title="${mk[3]}">${mk[1]}</span></div>
+    <div class="yen">${yen(addr)}</div></div>${nextDist()}</div>${rateLine()}
     <details class="fold"><summary>内訳（手元の合計・未払い・合意待ち）</summary>
       <div class="row"><div class="l">＋ 相対の残り</div><div class="a amt-third">${fu(third)}</div></div>
       <div class="row"><div class="l"><b>＝ 手元の合計</b></div><div class="a"><b>${fu(hand)}</b></div></div>
@@ -799,7 +801,7 @@ function setView(){
   h += `<h2>この端末</h2><div class="card">
     <button class="btn sub" onclick="forgetPass()" ${localStorage.getItem('dist-manager-pass') ? '' : 'disabled'}>覚えた合言葉を消す</button>
     <button class="btn ng" onclick="clearData()" ${DATA ? '' : 'disabled'}>データを消す</button></div>`;
-  h += `<h2>アプリ</h2><div class="card"><div class="kv"><span class="kk">版</span><span>0.3.3</span></div></div>`;
+  h += `<h2>アプリ</h2><div class="card"><div class="kv"><span class="kk">版</span><span>0.3.4</span></div></div>`;
   return h;
 }
 function noData(){
