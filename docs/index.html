@@ -239,7 +239,10 @@
 <div class="tabs" id="tabs"></div>
 
 <script>
-const TODAY = (()=>{ const d = new Date(); d.setHours(0,0,0,0); return d; })();
+const realToday = () => { const d = new Date(); d.setHours(0,0,0,0); return d; };
+let TODAY = realToday();
+// 試行データの基準日（設定タブで入れる。本番のデータでは使わない）："YYYY-MM-DD"。入れたらその日を「今日」とみなし、その日までの取引で表示する
+let BASE = '';
 const DIST_MONTHS = 3; // 分配は3か月に1回
 // 今のレート（残高の円表示）：CoinGecko から取る。前回から1時間たっていたら取り直す（1時間に1回まで）。取れないときは前回の値
 let RATE = null, RATE_AT = '';
@@ -550,24 +553,28 @@ const sOf = t => t.kind!=='wout'; // 自分用には相手のウォレットの�
 function platform(){
   const p = DATA.platform;
   if(!p) return '';
+  const v = (BASE && p.timeline) ? (p.timeline.filter(t => t.from <= BASE + ' 23:59').pop() || {}) : p;
+  const num = x => x == null ? '―' : f1(x);
+  const at = (BASE && v.year) ? `・${v.year}年目 ${v.count}回` : '';
   const im = DATA.images || {};
   const head = (src, text) => src ? `<div class="pf-cell"><img class="pf-img" src="${src}" alt="${text}"></div>` : `<div><div class="l">${text}</div></div>`;   // 画像があれば画像だけ、なければ文字
-  return `<details class="sec" open><summary>プラットフォーム収益${p.start ? `<span class="pf-start">運用開始 ${sl(p.start)}</span>` : ''}</summary><div class="plain">
+  return `<details class="sec" open><summary>プラットフォーム収益${p.start ? `<span class="pf-start">運用開始 ${sl(p.start)}${at}</span>` : ''}</summary><div class="plain">
     <div class="row${im.company ? ' pf' : ''}">${head(im.company,'会社収益')}
-      <div class="a one"><span class="rate">推定</span> <b>${f1(p.company)}</b> 万円<span class="rate">／年間</span></div></div>
+      <div class="a one"><span class="rate">推定</span> <b>${num(v.company)}</b> 万円<span class="rate">／年間</span></div></div>
     <div class="row${im.volume ? ' pf' : ''}">${head(im.volume,'○○の取引高')}
-      <div class="a one"><span class="rate">推定</span> <b>${f1(p.volume)}</b> 億円<span class="rate">／年間</span></div></div>
+      <div class="a one"><span class="rate">推定</span> <b>${num(v.volume)}</b> 億円<span class="rate">／年間</span></div></div>
   </div></details>`;
 }
 function meBal(){
   const {per, third} = calc();
-  const addr = DATA.walletBalance.amount;
+  const calcWB = BASE && DATA.walletBalance.calculated;
+  const addr = calcWB ? txs.reduce((a,t)=> t.kind==='recv' ? a + t.amt : (['give','move','out'].includes(t.kind) ? a - t.amt : a), 0) : DATA.walletBalance.amount;
   const tot = blank(); people.forEach(p=>{ for(const k in tot) tot[k]+=per[p.id][k]; }); finish(tot);
   const hand = addr + third, ok = hand + 1e-9 >= tot.held;
   const r = tot.held ? hand/tot.held : 9, mk = MARKS.find(m=>r+1e-9>=m[0]);
   const unsorted = txs.filter(t=>t.kind==='out'&&!t.cls).length;
   let h = (unsorted ? `<div class="notice" onclick="tab='tx';filter='uns';shown=10;render()">未仕分けが <b>${unsorted}件</b> あります<span class="go">取引で見る ›</span></div>` : '')
-    + `<div class="card"><div class="head"><div><div class="label">ウォレット残高<span class="rate">（${showD(DATA.walletBalance.at.replace(/-/g,'/'))} 時点）</span></div>
+    + `<div class="card"><div class="head"><div><div class="label">ウォレット残高<span class="rate">（${BASE ? sl(BASE) : showD(DATA.walletBalance.at.replace(/-/g,'/'))} 時点）</span></div>
     <div class="hero-row"><div class="big hero">${f2(addr)}<span class="unit">USDT</span></div>${eyeBtn()}<span class="mark mid" style="color:${mk[2]}" title="${mk[3]}">${mk[1]}</span></div>
     <div class="yen">${yen(addr)}</div></div>${nextDist()}</div>${rateLine()}
     <details class="fold"><summary>判定詳細</summary>
@@ -804,10 +811,16 @@ function setView(){
       <div class="two"><button class="btn sub" onclick="backupDownload()" ${DATA ? '' : 'disabled'}>ダウンロードに保存</button><button class="btn sub" onclick="backupShare()" ${DATA ? '' : 'disabled'}>共有で保存先を選ぶ</button></div>
       <div class="rate" style="margin-top:6px">ドライブは「${BK_FOLDER}」フォルダに保存します。ダウンロード・共有で保存したファイル（${BK_NAME}）は、上の［ファイルを読み込む］で戻せます。合言葉はデータファイルと同じです</div></div>`;
   }
+  if(DATA && DATA.trial){
+    h += `<h2>基準日（試行データのみ）</h2><div class="card">
+      <div class="s">この日を「今日」とみなして、その日までの取引で表示します（プラットフォーム収益・残高・グラフ・次回分配予定）。本番のデータでは出ません</div>
+      <div class="two" style="margin-top:8px"><input type="date" id="baseIn" value="${BASE}"><button class="btn sub" style="margin-top:0" onclick="setBase(document.getElementById('baseIn').value)">この日にする</button></div>
+      <button class="btn sub" onclick="setBase('')" ${BASE ? '' : 'disabled'}>今日に戻す</button></div>`;
+  }
   h += `<h2>この端末</h2><div class="card">
     <button class="btn sub" onclick="forgetPass()" ${localStorage.getItem('dist-manager-pass') ? '' : 'disabled'}>覚えた合言葉を消す</button>
     <button class="btn ng" onclick="clearData()" ${DATA ? '' : 'disabled'}>データを消す</button></div>`;
-  h += `<h2>アプリ</h2><div class="card"><div class="kv"><span class="kk">版</span><span>0.3.7</span></div></div>`;
+  h += `<h2>アプリ</h2><div class="card"><div class="kv"><span class="kk">版</span><span>0.3.8</span></div></div>`;
   return h;
 }
 function noData(){
@@ -1047,6 +1060,8 @@ function payments(d){
 }
 function useData(d, meta){
   DATA = d; META = meta;
+  BASE = ''; try { if(d.trial) BASE = localStorage.getItem('dist-manager-base') || ''; } catch(e){}
+  TODAY = BASE ? new Date(BASE + 'T00:00:00') : realToday();
   if(d.scope === 'manager'){
     people = d.people.map((p,i)=>({id:p.id, name:p.name, ratio:p.ratio, self:!!p.self, color:COLORS[i % COLORS.length]}));
     SOTAI = (d.sotai || []).map(x=>({id:x.id, name:x.name, addr:shortAddr(x.addr)}));
@@ -1069,12 +1084,18 @@ function useData(d, meta){
   payments(d).forEach(x=>txs.push({id:'p:'+x.id, d:sl(x.date), kind:'payThird', yen:x.yen, who:x.who, memo:x.memo, consent:x.status,
     rate:x.rate, rateDate:x.rateDate, usdt:x.usdt, code:x.code,
     hist:(x.history || []).map(h=>shortD(toDate(sl(h.date))) + ' ' + EVENT[h.event])}));
+  if(BASE){ const lim = sl(BASE) + ' 23:59'; txs = txs.filter(t => t.d <= lim); }
   showNote();
+}
+// 基準日を変える（空なら今日に戻す）
+function setBase(v){
+  try { if(v) localStorage.setItem('dist-manager-base', v); else localStorage.removeItem('dist-manager-base'); } catch(e){}
+  useData(DATA, META); render(true);
 }
 function showNote(){
   const el = document.getElementById('note');
   el.hidden = !DATA;
-  if(DATA) el.textContent = (DATA.trial ? '試行データです（作成 ' + DATA.generatedAt + '）。' : '') + 'QR は絵だけで、読み取りはボタンで代わりにしています。';
+  if(DATA) el.textContent = (DATA.trial ? '試行データです（作成 ' + DATA.generatedAt + '）。' : '') + (BASE ? '基準日 ' + sl(BASE) + ' で表示しています。' : '') + 'QR は絵だけで、読み取りはボタンで代わりにしています。';
 }
 const pad2 = n => String(n).padStart(2, '0');
 const isoDay = d => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
