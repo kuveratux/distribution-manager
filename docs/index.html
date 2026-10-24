@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0a0805">
 <title>DISTRIBUTION Manager</title>
-<meta name="app-version" content="0.7.0">
+<meta name="app-version" content="0.7.1">
 <meta name="apple-mobile-web-app-title" content="DISTRIBUTION Manager">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -238,7 +238,7 @@
 </head>
 <body>
 <header class="appbar">
-  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver" id="status">Version：0.7.0</span>
+  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver" id="status">Version：0.7.1</span>
 </header>
 <div class="wrap">
   <div class="note update" id="updateNote" hidden>新しいバージョンがあります。<button onclick="location.reload()">更新する</button></div>
@@ -322,6 +322,8 @@ function toggleHide(){ hide=!hide; try{ localStorage.setItem('dist-manager-hide'
 const EYE = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>`;
 const EYE_OFF = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.9 17.9A10.4 10.4 0 0 1 12 19C5 19 1 12 1 12a18.5 18.5 0 0 1 5.1-5.9M9.9 5.2A9.6 9.6 0 0 1 12 5c7 0 11 7 11 7a18.6 18.6 0 0 1-2.2 3.2M14.1 14.1a3 3 0 1 1-4.2-4.2"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
 const yen = n => RATE ? '約 ' + fy(n*RATE) : '約 ― 円';
+// 分配比率の表記：50% を 1口とする（25% は 0.5口）
+const kuchi = r => (Math.round(r * 2 * 1000) / 1000) + '口';
 const pname = id => people.find(p=>p.id===id).name;
 const floor2 = n => Math.floor(n*100+1e-9)/100;
 const toDate = d => { const [ymd, hm] = d.split(' '); const [y,m,dd] = ymd.split('/').map(Number); const [h,mi] = (hm||'0:0').split(':').map(Number); return new Date(y,m-1,dd,h,mi); };
@@ -411,7 +413,7 @@ const pc = (v, all) => fp(Math.round(all? Math.max(0,v)/all*100 : 0) + '%');
 const legend = `<div class="legend"><span><i style="background:var(--out)"></i>支出</span><span><i style="background:var(--sky)"></i>ウォレット</span><span><i style="background:var(--in)"></i>未受領</span><span>（ウォレット＋未受領＝残高）</span></div>`;
 function detail(x, ratioLabel){
   return `<div class="grid">
-      <div><span class="label">分配${ratioLabel||''}</span><b>${fu(x.alloc)}</b></div>
+      <div><span class="label">分配累計${ratioLabel||''}</span><b>${fu(x.alloc)}</b></div>
       <div><span class="label">支出</span><b class="amt-out">${fu(x.used)}</b><span class="rate">相対で ${fu(x.usedHere)}・ウォレットから ${fu(x.usedWallet)}</span></div>
       <div><span class="label">ウォレット</span><b class="amt-give">${fu(x.wallet)}</b><span class="rate">受け取り済み・未支出</span></div>
       <div><span class="label">未受領</span><b class="amt-in">${fu(x.unrec)}</b></div>
@@ -629,7 +631,7 @@ function meBal(){
     const k3 = p.self ? ['ウォレット', x.usedSelf] : ['ウォレット', x.give];   // 自分は自分のウォレット（アドレス）から使った分
     const hl = p.self ? '残高' : '預り金';   // 自分の分は預かっているお金ではないので「残高」
     const w = v => (x.alloc? Math.max(0,v)/x.alloc*100:0).toFixed(2)+'%';
-    h += `<div class="card"><div class="person-head"><span class="name"><span class="sw gold"></span>${p.name}<span class="ratio" style="margin-left:8px;font-weight:normal">${fp(p.ratio*100)}%</span></span>
+    h += `<div class="card"><div class="person-head"><span class="name"><span class="sw gold"></span>${p.name}<span class="ratio" style="margin-left:8px;font-weight:normal">${fp(kuchi(p.ratio))}</span></span>
       <span class="ph-amt"><span class="ph-l">${hl}</span><span class="big hero ph">${f2(x.held)}<span class="unit">USDT</span></span><span class="rate">${yen(x.held)}</span></span></div>
       <div class="bar" style="border:1px solid var(--line);height:12px">${segs(x, [['kh',x.held],['ks',x.usedHere],['kw',k3[1]]])}</div>
       <div class="rate barcap"><span>${hl} ${fu(x.held)} / 分配累計 ${fu(x.alloc)}</span>
@@ -774,7 +776,7 @@ function youBal(){
     <div class="bar" style="border:1px solid var(--line);height:12px">${segs(x, [['kh',x.unrec],['kw',x.wallet]])}</div>
     <div class="rate barcap"><span>残高 ${fu(x.bal)} / 分配累計 ${fu(x.alloc)}</span>
       <span>（<i class="k kh"></i>未受領：${pc(x.unrec,x.alloc)}、<i class="k kw"></i>ウォレット：${pc(x.wallet,x.alloc)}）</span></div>
-    <details class="fold"><summary>内訳（分配・支出・ウォレット・未受領）</summary>${detail(x, `（比率 ${fp(p.ratio*100)}%）`)}</details></div>
+    <details class="fold"><summary>内訳</summary>${detail(x, `（${fp(kuchi(p.ratio))}）`)}</details></div>
     
     ${platform()}
     <details class="sec"><summary>実績と推移</summary>
@@ -870,7 +872,7 @@ function setView(){
   h += `<div class="card"><h2>この端末</h2>
     <button class="btn sub" onclick="forgetPass()" ${localStorage.getItem('dist-manager-pass') ? '' : 'disabled'}>覚えた合言葉を消す</button>
     <button class="btn ng" onclick="clearData()" ${DATA ? '' : 'disabled'}>データを消す</button></div>`;
-  h += `<div class="card"><h2>このアプリについて</h2><div>バージョン：<b>0.7.0</b></div>
+  h += `<div class="card"><h2>このアプリについて</h2><div>バージョン：<b>0.7.1</b></div>
     <button class="btn sub" onclick="checkUpdate(this)">更新を確認</button></div>`;
   return h;
 }
@@ -1171,7 +1173,7 @@ async function restoreFromDrive(){
 async function newerVersion(){
   const html = await (await fetch('./?t=' + Date.now(), {cache: 'no-store'})).text();
   const latest = (html.match(/name="app-version" content="([^"]+)"/) || [])[1];
-  return latest && latest !== '0.7.0' ? latest : null;
+  return latest && latest !== '0.7.1' ? latest : null;
 }
 // 新しい版の Service Worker に入れ替わるまで待つ（最大 ms）。入れ替わったら true
 function waitForNewWorker(reg, ms){
@@ -1210,7 +1212,7 @@ async function checkUpdate(btn){
   try {
     const latest = await newerVersion();
     if(latest){ if(confirm('新しいバージョン（' + latest + '）があります。更新しますか？')) await applyUpdate(); }
-    else alert('最新のバージョンです（0.7.0）');
+    else alert('最新のバージョンです（0.7.1）');
   } catch(e){ alert('更新を確認できませんでした（通信を確認してください）'); }
   finally { btn.disabled = false; }
 }
@@ -1273,7 +1275,7 @@ function setBase(v){
 }
 function showStatus(){
   const st = document.getElementById('status');
-  st.textContent = 'Version：0.7.0';
+  st.textContent = 'Version：0.7.1';
   st.title = DATA ? 'データの作成日時：' + DATA.generatedAt : 'データはまだ読み込んでいません';
 }
 function showNote(){
