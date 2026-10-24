@@ -172,6 +172,24 @@
   .tabs div.on{color:var(--gold-1);border-top-color:var(--gold-2);text-shadow:0 0 10px var(--glow)}
   .tab-ic{width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
   .tabs div.on .tab-ic{filter:drop-shadow(0 0 6px var(--glow))}
+  /* スワイプで移る先を示す札（ESV と同じ動き。色は金）：画面の端の中ほど。指の動きに合わせて現れ、移ると決まったら進む向きへ流れる */
+  #view{will-change:transform}
+  .swipe-hint{position:fixed;top:50%;z-index:7;display:flex;flex-direction:column;align-items:center;gap:2px;
+    padding:10px 8px;border-radius:14px;background:rgba(28,21,10,.92);border:1px solid var(--edge);
+    box-shadow:0 0 18px var(--glow);color:var(--gold-1);opacity:0;pointer-events:none;--p:0;
+    transform:translateY(-50%) translateX(calc((1 - var(--p)) * var(--from)));transition:opacity .1s}
+  .swipe-hint.right{right:8px;--from:16px}
+  .swipe-hint.left{left:8px;--from:-16px}
+  .swipe-hint .sh-arrow{font-size:34px;line-height:1;font-weight:700}
+  .swipe-hint .sh-name{font-size:11px;white-space:nowrap}
+  .swipe-hint.ready{background:linear-gradient(180deg,var(--gold-1),var(--gold-2) 55%,var(--gold-3));color:#1a1204}
+  .swipe-hint.ready .sh-arrow{animation:sh-pulse .5s ease-in-out infinite alternate}
+  .swipe-hint.right.ready .sh-arrow{--dx:-4px}
+  .swipe-hint.left.ready .sh-arrow{--dx:4px}
+  @keyframes sh-pulse{from{transform:translateX(0)}to{transform:translateX(var(--dx))}}
+  .swipe-hint.go{transition:transform .25s ease-in,opacity .25s ease-in;opacity:0 !important}
+  .swipe-hint.right.go{transform:translateY(-50%) translateX(-60vw)}
+  .swipe-hint.left.go{transform:translateY(-50%) translateX(60vw)}
   .badge{display:inline-block;min-width:16px;padding:0 4px;border-radius:8px;background:var(--gold-2);color:#000;font-size:10px;margin-left:3px}
 </style>
 </head>
@@ -180,7 +198,7 @@
   <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span>
 </header>
 <div class="wrap">
-  <div class="note">ダミーのデータです（分配は1回 6,500 USDT）。QR は絵だけで、読み取りはボタンで代わりにしています。<span class="ver">版 0.1.1</span></div>
+  <div class="note">ダミーのデータです（分配は1回 6,500 USDT）。QR は絵だけで、読み取りはボタンで代わりにしています。<span class="ver">版 0.1.2</span></div>
   <div id="view"></div>
 </div>
 <div class="tabs" id="tabs"></div>
@@ -740,6 +758,73 @@ function render(keepScroll){
   hookCharts();
   if(!keepScroll) window.scrollTo(0,0);
 }
+// 横にスワイプすると隣のタブへ（左へスワイプで右隣、右へで左隣）。ESV と同じ動き：ページは指についてきて、離すと次のページが横から滑り込む（0.15 秒）
+// 動かしている間は、移る先の側に矢印と行き先のタブ名を出す。画面幅の 20% 未満でゆっくり離したときは元に戻る。両端のタブでは重く動いて戻る
+// 入力欄・グラフ（指でなぞって値を見る）・下のタブ・横にスクロールできるものの上では動かさない
+(() => {
+  const SLIDE_MS = 150;
+  const hint = document.createElement('div');
+  hint.className = 'swipe-hint';
+  hint.innerHTML = '<span class="sh-arrow"></span><span class="sh-name"></span>';
+  document.body.appendChild(hint);
+  const showHint = (dir, name, p) => { // dir：-1＝次（右端）、1＝前（左端）、p：0〜1
+    hint.classList.toggle('left', dir > 0); hint.classList.toggle('right', dir < 0);
+    hint.querySelector('.sh-arrow').textContent = dir < 0 ? '›' : '‹';
+    hint.querySelector('.sh-name').textContent = name;
+    hint.style.opacity = String(Math.min(1, p * 1.6));
+    hint.style.setProperty('--p', String(Math.min(1, p)));
+    hint.classList.toggle('ready', p >= 1);
+  };
+  const hideHint = (go) => { hint.classList.remove('ready'); if (go) { hint.classList.add('go'); setTimeout(() => { hint.classList.remove('go'); hint.style.opacity = '0'; }, 260); } else hint.style.opacity = '0'; };
+  let sx = 0, sy = 0, st = 0, armed = false, dir = '', dx = 0, busy = false;
+  const page = document.getElementById('view');
+  const scrollsX = (e) => { for (let n = e; n && n !== document.body; n = n.parentElement) { if (n.scrollWidth > n.clientWidth + 1 && /(auto|scroll)/.test(getComputedStyle(n).overflowX)) return true; } return false; };
+  const tabEls = () => [...document.querySelectorAll('#tabs > div')];
+  const curIndex = () => tabEls().findIndex((b) => b.classList.contains('on'));
+  const tabName = (b) => b.querySelector('span').firstChild.textContent.trim(); // 件数の印は除く
+  const slide = (el, x, ms) => { el.style.transition = ms ? 'transform ' + ms + 'ms ease-out' : 'none'; el.style.transform = x ? 'translateX(' + x + 'px)' : ''; };
+  const after = (ms) => new Promise((r) => setTimeout(r, ms + 20));
+  document.addEventListener('touchstart', (ev) => {
+    armed = false; dir = ''; dx = 0;
+    if (busy || ev.touches.length !== 1) return;
+    const t = ev.target;
+    if (t.closest('input, select, textarea, .chart, .tabs') || scrollsX(t)) return;
+    sx = ev.touches[0].clientX; sy = ev.touches[0].clientY; st = Date.now(); armed = true;
+  }, { passive: true });
+  document.addEventListener('touchmove', (ev) => {
+    if (!armed) return;
+    const mx = ev.touches[0].clientX - sx, my = ev.touches[0].clientY - sy;
+    if (!dir) {
+      if (Math.abs(mx) < 10 && Math.abs(my) < 10) return;
+      dir = Math.abs(mx) > Math.abs(my) * 1.5 ? 'x' : 'y'; // 最初の動きで、横（タブ移動）か縦（スクロール）かを決める
+    }
+    if (dir !== 'x') return;
+    ev.preventDefault(); // 横に動かしている間は、縦にスクロールさせない
+    const j = curIndex() + (mx < 0 ? 1 : -1);
+    const has = j >= 0 && j < tabEls().length;
+    dx = has ? mx : mx / 4; // 端のタブでは重く
+    slide(page, dx, 0);
+    if (has) showHint(mx < 0 ? -1 : 1, tabName(tabEls()[j]), Math.abs(dx) / (window.innerWidth * 0.2)); else hideHint(false);
+  }, { passive: false });
+  document.addEventListener('touchend', async () => {
+    if (!armed || dir !== 'x') { armed = false; return; }
+    armed = false;
+    const w = window.innerWidth;
+    const j = curIndex() + (dx < 0 ? 1 : -1);
+    const fast = Math.abs(dx) > 25 && Date.now() - st < 300; // すばやく払ったときは短くても移る
+    if (j < 0 || j >= tabEls().length || (Math.abs(dx) < w * 0.2 && !fast)) { hideHint(false); slide(page, 0, SLIDE_MS); await after(SLIDE_MS); slide(page, 0, 0); return; }
+    hideHint(true);
+    busy = true;
+    const d = dx < 0 ? -1 : 1;
+    slide(page, d * w, SLIDE_MS); // 今のページを外へ
+    await after(SLIDE_MS);
+    slide(page, 0, 0);
+    tabEls()[j].click(); // タブを切り替えて描き直す（一番上へ戻る）
+    slide(page, -d * w, 0); page.getBoundingClientRect(); slide(page, 0, SLIDE_MS); await after(SLIDE_MS); slide(page, 0, 0); // 次のページを反対側から
+    busy = false;
+  });
+  document.addEventListener('touchcancel', () => { if (armed) slide(page, 0, SLIDE_MS); hideHint(false); armed = false; });
+})();
 if(['#tx','#pay'].includes(location.hash)) tab=location.hash.slice(1);
 render();
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
