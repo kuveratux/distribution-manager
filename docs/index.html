@@ -218,6 +218,12 @@
     <div class="two"><button class="btn sub" value="cancel">やめる</button><button class="btn" value="ok">読み込む</button></div>
   </form>
 </dialog>
+<dialog id="bkDlg">
+  <div class="label" style="font-size:14px;color:var(--text)">バックアップを取ります</div>
+  <div class="s" style="margin-top:6px">データが消えたときやスマホを替えたときに戻せるよう、Google ドライブの「DISTRIBUTION バックアップ」フォルダに保存します。</div>
+  <button class="btn" onclick="document.getElementById('bkDlg').close();backupToDrive()">ログインしてドライブに保存</button>
+  <button class="btn sub" onclick="document.getElementById('bkDlg').close()">あとで（設定タブから取れます）</button>
+</dialog>
 <div class="tabs" id="tabs"></div>
 
 <script>
@@ -234,6 +240,10 @@ const DAY_RATE = loadJson('dist-manager-dayrate') || {};
 //       wout=相手のウォレットから送金（Agent の端末の中だけで仕分け。cls: spend=支出 other=対象外 null=未仕分け）
 // consent: self=自分の分（印は出さない） wait=合意待ち ok=合意済み no=合意なし cancel=取り消し
 let DATA = null, META = null, people = [], SOTAI = [], txs = [], ME = '';
+// Manager：アプリで入れた支払い（added、データファイルと同じ形）と、データの支払いへの変更（changes：取り消し・合意）。
+// エクセルに取り込まれて次のデータファイルに入ったら、端末からは外す。消えると戻せないので、バックアップに入れる
+let LOCAL = {added: [], changes: {}};
+let PASS = '';   // この起動で使った合言葉（バックアップの暗号化に使う。端末には覚えさせない）
 const COLORS = ['var(--s1)', 'var(--s2)', 'var(--s3)'];
 const DATA_VERSION_MAX = 1, ENC_VERSION_MAX = 1;
 let mode = 'me', tab = 'bal', filter = 'all', shown = 10;
@@ -618,10 +628,19 @@ function sortWout(id, c){
   render(true);
 }
 function cancelTx(id){
-  const t = txs.find(t=>t.id===id);
   if(!confirm('この支出を取り消しますか？（履歴には「取り消し」として残ります）')) return;
-  t.consent='cancel'; t.hist.push(shortD(new Date())+' 取り消し'); render();
+  changePayment(id.slice(2), 'cancel'); render(true);
 }
+// 支払いの状態を変えて端末に保存し、画面の取引を作り直す（アプリで入れたものは直接、データのものは changes に）
+function changePayment(pid, status){
+  const ev = {date: isoDay(new Date()), event: status};
+  const own = LOCAL.added.find(p=>p.id===pid);
+  if(own){ own.status = status; own.history.push(ev); }
+  else { const c = LOCAL.changes[pid] || {status, added: []}; c.status = status; c.added.push(ev); LOCAL.changes[pid] = c; }
+  saveLocal();
+  useData(DATA, META);
+}
+function saveLocal(){ saveJson('dist-manager-local', LOCAL); markDirty(); }
 
 function mePay(){
   const s = payFlow.step;
@@ -654,7 +673,7 @@ function mePay(){
       <button class="btn sub" onclick="payFlow={step:0,tx:null};render()">続けて入れる</button></div>`;
   }
   h += `<div class="card"><div class="label">エクセルへの反映</div>
-    <div class="s">ここで入れた支払い・合意コード・取り消しは、PC でファイルに書き出してエクセルに取り込みます（未反映 ${txs.filter(t=>String(t.id).startsWith('n:')).length}件）</div>
+    <div class="s">ここで入れた支払い・合意コード・取り消しは、PC でファイルに書き出してエクセルに取り込みます（未反映 ${LOCAL.added.length + Object.keys(LOCAL.changes).length}件）</div>
     <button class="btn sub">エクセル用に書き出す（見本では動きません）</button></div>`;
   return h;
 }
@@ -673,14 +692,18 @@ function payCalc(){
   document.getElementById('pGo').textContent = people.find(p=>p.id===f.who).self ? '入れる（自分の分なので合意不要）' : '入れて QR を出す';
 }
 function payNext(){
-  const f = payForm();
-  if(!rateFor(f.d).rate || !f.yen) return;
+  const f = payForm(), r = rateFor(f.d);
+  if(!r.rate || !f.yen) return;
   const self = people.find(p=>p.id===f.who).self;
-  const t = {id:'n:'+(seq++), kind:'payThird', ...f, consent: self?'self':'wait', hist:[]};
-  txs.push(t);
-  payFlow = {step: self?3:1, tx:t}; render();
+  // データファイルと同じ形で端末に保存（ID は入れた日時から。同じ分に2件入れても重ならないよう秒と連番を付ける）
+  const now = new Date(), [y,m,dd] = r.full.split('/').map(Number);
+  const pay = {id: 'P-' + isoDay(now).replace(/-/g,'') + '-' + pad2(now.getHours()) + pad2(now.getMinutes()) + pad2(now.getSeconds()) + '-' + (seq++),
+    date: f.d.replace(/\//g,'-'), who: f.who, memo: f.memo, yen: f.yen, rateDate: `${y}-${pad2(m)}-${pad2(dd)}`, rate: r.rate,
+    usdt: floor2(f.yen / r.rate), status: self ? 'self' : 'wait', code: '', history: []};
+  LOCAL.added.push(pay); saveLocal(); useData(DATA, META);
+  payFlow = {step: self?3:1, tx: txs.find(t=>t.id==='p:'+pay.id)}; render();
 }
-function payDone(){ payFlow.tx.consent='ok'; payFlow.tx.hist.push(shortD(new Date())+' 合意'); payFlow.step=3; render(); }
+function payDone(){ const id = payFlow.tx.id; changePayment(id.slice(2), 'ok'); payFlow = {step:3, tx: txs.find(t=>t.id===id)}; render(); }
 function payLater(){ payFlow={step:0,tx:null}; tab='tx'; filter='wait'; render(); }
 
 /* ---------- 相手用（Agent） ---------- */
@@ -757,10 +780,21 @@ function setView(){
   h += `<label class="btn" for="fileIn" style="text-align:center">ファイルを読み込む</label>
     <input type="file" id="fileIn" accept=".json,application/json" hidden onchange="importFile(this)">
     <div class="rate" style="margin-top:6px">ブックで作った ${SCOPE_LABEL[SCOPE]}のデータファイル（${SCOPE==='manager' ? 'dist-manager_…' : 'dist-agent-…'}.json）を選びます</div></div>`;
+  if(SCOPE === 'manager'){
+    loadGis().catch(()=>{});
+    const bk = loadJson('dist-manager-bk');
+    h += `<h2>バックアップ</h2><div class="card">
+      <div class="kv"><span class="kk">前回</span><span>${bk ? bk.at + '（' + bk.where + '）' : 'まだ取っていません'}</span></div>
+      ${isDirty() && DATA ? '<div style="margin-top:6px"><span class="tag wait">まだバックアップしていない変更があります</span></div>' : ''}
+      <button class="btn" onclick="backupToDrive()" ${DATA ? '' : 'disabled'}>Google ドライブに保存</button>
+      <button class="btn sub" onclick="restoreFromDrive()">Google ドライブから戻す</button>
+      <div class="two"><button class="btn sub" onclick="backupDownload()" ${DATA ? '' : 'disabled'}>ダウンロードに保存</button><button class="btn sub" onclick="backupShare()" ${DATA ? '' : 'disabled'}>共有で保存先を選ぶ</button></div>
+      <div class="rate" style="margin-top:6px">ドライブは「${BK_FOLDER}」フォルダに保存します。ダウンロード・共有で保存したファイル（${BK_NAME}）は、上の［ファイルを読み込む］で戻せます。合言葉はデータファイルと同じです</div></div>`;
+  }
   h += `<h2>この端末</h2><div class="card">
     <button class="btn sub" onclick="forgetPass()" ${localStorage.getItem('dist-manager-pass') ? '' : 'disabled'}>覚えた合言葉を消す</button>
     <button class="btn ng" onclick="clearData()" ${DATA ? '' : 'disabled'}>データを消す</button></div>`;
-  h += `<h2>アプリ</h2><div class="card"><div class="kv"><span class="kk">版</span><span>0.2.0</span></div></div>`;
+  h += `<h2>アプリ</h2><div class="card"><div class="kv"><span class="kk">版</span><span>0.3.0</span></div></div>`;
   return h;
 }
 function noData(){
@@ -775,14 +809,18 @@ async function importFile(input){
   try {
     let json;
     try { json = JSON.parse(await file.text()); } catch(e){ throw new Error('データファイルではありません（中身が読めません）'); }
+    if(json.format === 'dist-backup-enc'){ await restoreBackup(json); return; }
     const d = await decryptIfNeeded(json);
     if(!d) return;   // 合言葉の入力をやめた
     validate(d);
     const meta = {fileName: file.name, importedAt: nowText()};
     if(!saveJson('dist-manager-data', {data: d, meta})) throw new Error('端末に保存できませんでした（空き容量を確かめてください）');
+    saveJson('dist-manager-src', json.format === 'dist-data-enc' ? json : null);
     useData(d, meta);
     tab = 'bal'; render();
     alert('読み込みました（作成 ' + d.generatedAt + '）');
+    // 初めて読み込んだとき（バックアップをまだ取っていない Manager）は、バックアップを勧める
+    if(SCOPE === 'manager' && !loadJson('dist-manager-bk')){ markDirty(); loadGis(); document.getElementById('bkDlg').showModal(); }
   } catch(e){ alert(e.message); }
 }
 function validate(d){
@@ -802,13 +840,14 @@ async function decryptIfNeeded(json){
   if(json.format !== 'dist-data-enc') return json;
   if(json.version > ENC_VERSION_MAX) throw new Error('このデータは新しい版のアプリ用です。アプリを開き直して更新してから、もう一度読み込んでください');
   const saved = localStorage.getItem('dist-manager-pass');
-  if(saved){ try { return await decryptData(json, saved); } catch(e){ /* 合言葉が変わった → 聞く */ } }
+  if(saved){ try { const d = await decryptData(json, saved); PASS = saved; return d; } catch(e){ /* 合言葉が変わった → 聞く */ } }
   let msg = '合言葉を入れてください';
   for(;;){
     const a = await askPass(msg);
     if(!a) return null;
     try {
       const d = await decryptData(json, a.pass);
+      PASS = a.pass;
       try { if(a.save) localStorage.setItem('dist-manager-pass', a.pass); else localStorage.removeItem('dist-manager-pass'); } catch(e){}
       return d;
     } catch(e){ msg = '合言葉が違います。もう一度入れてください'; }
@@ -823,16 +862,176 @@ function askPass(msg){
     dlg.showModal();
   });
 }
+/* ---------- バックアップ（Manager） ---------- */
+// 中身：元のデータファイル（暗号のまま）・読み込みの記録・アプリで入れた支払いと変更。データファイルと同じ合言葉で暗号化する
+// 置き場所：Google ドライブの「DISTRIBUTION バックアップ」フォルダ（決まった名前に上書き。ドライブは古い版もしばらく残す）、
+//           またはダウンロード・共有。戻すときはドライブから、または［ファイルを読み込む］でそのファイルを選ぶ
+const BK_NAME = 'DISTRIBUTION_backup_' + SCOPE + '.json', BK_FOLDER = 'DISTRIBUTION バックアップ';
+function markDirty(){ try { localStorage.setItem('dist-manager-dirty', '1'); } catch(e){} }
+const isDirty = () => { try { return localStorage.getItem('dist-manager-dirty') === '1'; } catch(e){ return false; } };
+function backupDone(where){ saveJson('dist-manager-bk', {at: nowText(), where}); try { localStorage.removeItem('dist-manager-dirty'); } catch(e){} render(true); }
+const b64e = u8 => { let t = ''; for(let i = 0; i < u8.length; i += 0x8000) t += String.fromCharCode(...u8.subarray(i, i + 0x8000)); return btoa(t); };
+async function encryptData(obj, pass){
+  const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass.normalize('NFC')), 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey({name:'PBKDF2', hash:'SHA-256', salt, iterations:600000}, base, {name:'AES-GCM', length:256}, false, ['encrypt']);
+  const ct = new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM', iv}, key, new TextEncoder().encode(JSON.stringify(obj))));
+  return {format:'dist-backup-enc', version:1, kdf:{name:'PBKDF2', hash:'SHA-256', iterations:600000, salt:b64e(salt)}, cipher:{name:'AES-GCM', iv:b64e(iv)}, data:b64e(ct)};
+}
+// バックアップの合言葉：元のデータファイルで正しいと確かめたものだけを使う（打ち間違いで戻せないバックアップを作らない）
+async function backupPass(src){
+  for(const p of [PASS, (()=>{ try { return localStorage.getItem('dist-manager-pass') || ''; } catch(e){ return ''; } })()]){
+    if(p){ try { await decryptData(src, p); PASS = p; return p; } catch(e){} }
+  }
+  let msg = 'バックアップの合言葉（データファイルと同じ）を入れてください';
+  for(;;){
+    const a = await askPass(msg);
+    if(!a) return null;
+    try { await decryptData(src, a.pass); PASS = a.pass; return a.pass; } catch(e){ msg = '合言葉が違います（データファイルと同じ合言葉です）'; }
+  }
+}
+async function makeBackup(){
+  const src = loadJson('dist-manager-src');
+  if(!src) throw new Error('暗号化されたデータファイルを読み込んでから、バックアップを取ってください');
+  const pass = await backupPass(src);
+  if(!pass) return null;
+  return JSON.stringify(await encryptData({format:'dist-backup', version:1, scope:SCOPE, createdAt:nowText(), src, meta:META, local:LOCAL}, pass));
+}
+async function restoreBackup(json){
+  if(json.version > 1) throw new Error('このバックアップは新しい版のアプリ用です。アプリを開き直して更新してから、もう一度読み込んでください');
+  let b = null;
+  for(const p of [PASS, (()=>{ try { return localStorage.getItem('dist-manager-pass') || ''; } catch(e){ return ''; } })()]){
+    if(p && !b){ try { b = await decryptData(json, p); PASS = p; } catch(e){} }
+  }
+  let msg = 'バックアップの合言葉（データファイルと同じ）を入れてください';
+  while(!b){
+    const a = await askPass(msg);
+    if(!a) return;
+    try { b = await decryptData(json, a.pass); PASS = a.pass; } catch(e){ msg = '合言葉が違います。もう一度入れてください'; }
+  }
+  if(b.format !== 'dist-backup' || b.scope !== SCOPE) throw new Error('このファイルは ' + SCOPE_LABEL[SCOPE] + 'のバックアップではありません');
+  const d = await decryptData(b.src, PASS);
+  validate(d);
+  if(DATA && !confirm('この端末のデータを、バックアップ（' + b.createdAt + '）の内容に置き換えますか？')) return;
+  LOCAL = b.local || {added: [], changes: {}};
+  saveJson('dist-manager-local', LOCAL);
+  saveJson('dist-manager-src', b.src);
+  saveJson('dist-manager-data', {data: d, meta: b.meta});
+  saveJson('dist-manager-bk', {at: b.createdAt, where: '戻したバックアップ'});
+  try { localStorage.removeItem('dist-manager-dirty'); } catch(e){}
+  useData(d, b.meta);
+  tab = 'bal'; render();
+  alert('バックアップ（' + b.createdAt + '）から戻しました');
+}
+function backupDownload(){
+  makeBackup().then(text => {
+    if(!text) return;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], {type:'application/json'}));
+    a.download = BK_NAME; document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+    backupDone('ダウンロード');
+  }).catch(e => alert(e.message));
+}
+async function backupShare(){
+  try {
+    const text = await makeBackup();
+    if(!text) return;
+    const file = new File([text], BK_NAME, {type:'application/json'});
+    if(!navigator.canShare || !navigator.canShare({files:[file]})) throw new Error('この端末では共有で保存できません。［ダウンロードに保存］を使ってください');
+    await navigator.share({files:[file], title:'DISTRIBUTION バックアップ'});
+    backupDone('共有');
+  } catch(e){ if(e.name !== 'AbortError') alert(e.message); }
+}
+
+/* ---------- Google ドライブ（Manager のバックアップ） ---------- */
+// ESV と同じ Google の設定（kuveratux.github.io から使える OAuth クライアント）。権限は drive.file（このアプリで作ったファイルだけ）
+// 使うのは「DISTRIBUTION バックアップ」フォルダとその中のバックアップのファイルだけ
+const G_CLIENT_ID = '62334130469-9cd1ogi940lagb7cm9l25f8809l7k7tg.apps.googleusercontent.com';
+const G_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+const G_API = 'https://www.googleapis.com/drive/v3/files', G_UP = 'https://www.googleapis.com/upload/drive/v3/files';
+let gisLoading = null, gToken = '', gTokenEnd = 0;
+// ログインの部品は先に読み込んでおく（押したときにすぐログインの画面を開けるように。開くのは押した直後でないと止められる）
+function loadGis(){
+  if(gisLoading) return gisLoading;
+  gisLoading = new Promise((resolve, reject) => {
+    const sc = document.createElement('script'); sc.src = 'https://accounts.google.com/gsi/client'; sc.async = true;
+    sc.onload = resolve; sc.onerror = () => { gisLoading = null; reject(new Error('Google のログインの部品を読み込めませんでした（つながっているか確かめてください）')); };
+    document.head.appendChild(sc);
+  });
+  return gisLoading;
+}
+function driveToken(){
+  if(gToken && Date.now() < gTokenEnd) return Promise.resolve(gToken);
+  if(!(window.google && google.accounts && google.accounts.oauth2)){ loadGis().catch(()=>{}); return Promise.reject(new Error('ログインの準備中です。少し待ってから、もう一度押してください')); }
+  return new Promise((resolve, reject) => {
+    const tc = google.accounts.oauth2.initTokenClient({client_id: G_CLIENT_ID, scope: G_SCOPE,
+      callback: r => { if(r.error){ reject(new Error('ログインできませんでした（' + r.error + '）')); return; } gToken = r.access_token; gTokenEnd = Date.now() + (r.expires_in - 60) * 1000; resolve(gToken); },
+      error_callback: e => reject(new Error(e && e.type === 'popup_closed' ? 'ログインをやめました' : 'ログインの画面を開けませんでした'))});
+    tc.requestAccessToken();
+  });
+}
+async function gfetch(url, opt = {}){
+  const r = await fetch(url, {...opt, headers: {...(opt.headers || {}), Authorization: 'Bearer ' + gToken}});
+  if(!r.ok) throw new Error('ドライブの操作に失敗しました（' + r.status + '）');
+  return r;
+}
+const gq = s => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+async function gfind(q){
+  const j = await (await gfetch(G_API + '?q=' + encodeURIComponent(q) + '&spaces=drive&orderBy=modifiedTime%20desc&fields=files(id,name,modifiedTime)')).json();
+  return (j.files || [])[0] || null;
+}
+async function gfolder(create){
+  const f = await gfind(`name='${gq(BK_FOLDER)}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+  if(f || !create) return f;
+  return (await gfetch(G_API + '?fields=id', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name: BK_FOLDER, mimeType:'application/vnd.google-apps.folder'})})).json();
+}
+async function backupToDrive(){
+  try {
+    await driveToken();                 // 押した直後にログインの画面を開く
+    const text = await makeBackup();
+    if(!text) return;
+    const folder = await gfolder(true);
+    const old = await gfind(`name='${gq(BK_NAME)}' and '${folder.id}' in parents and trashed=false`);
+    const bd = 'dist' + Date.now();
+    const body = `--${bd}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(old ? {} : {name: BK_NAME, parents: [folder.id]})}\r\n--${bd}\r\nContent-Type: application/json\r\n\r\n${text}\r\n--${bd}--`;
+    await gfetch((old ? G_UP + '/' + old.id : G_UP) + '?uploadType=multipart&fields=id', {method: old ? 'PATCH' : 'POST', headers: {'Content-Type': 'multipart/related; boundary=' + bd}, body});
+    backupDone('Google ドライブ');
+    alert('Google ドライブの「' + BK_FOLDER + '」に保存しました');
+  } catch(e){ alert(e.message); }
+}
+async function restoreFromDrive(){
+  try {
+    await driveToken();
+    const folder = await gfolder(false);
+    const f = folder && await gfind(`name='${gq(BK_NAME)}' and '${folder.id}' in parents and trashed=false`);
+    if(!f) throw new Error('ドライブにバックアップがありません');
+    await restoreBackup(await (await gfetch(G_API + '/' + f.id + '?alt=media')).json());
+  } catch(e){ alert(e.message); }
+}
 function forgetPass(){ try { localStorage.removeItem('dist-manager-pass'); } catch(e){} render(true); alert('覚えた合言葉を消しました'); }
 function clearData(){
   if(!confirm('この端末のデータを消しますか？（データファイルを読み込めば、また出せます）')) return;
-  try { localStorage.removeItem('dist-manager-data'); } catch(e){}
+  if(SCOPE === 'manager' && (LOCAL.added.length || Object.keys(LOCAL.changes).length) && !confirm('まだエクセルに取り込んでいない支払いの入力も消えます。よいですか？（バックアップがあれば戻せます）')) return;
+  try { ['data','src','local','dirty'].forEach(k => localStorage.removeItem('dist-manager-' + k)); } catch(e){}
+  LOCAL = {added: [], changes: {}};
   DATA = null; META = null; people = []; SOTAI = []; txs = []; render();
 }
 // データファイルの形 → 画面の作りに合わせた形
 const shortAddr = a => a && a.length > 14 ? a.slice(0,6) + '…' + a.slice(-4) : (a || '');
 const sl = d => String(d).replace(/-/g, '/');   // "2026-01-16 10:00" → "2026/01/16 10:00"
 const EVENT = {no:'合意しない', ok:'合意', cancel:'取り消し'};
+// データの支払い＋アプリで入れた支払い（取り込み済みのものは外す）に、変更（取り消し・合意）を当てる
+function payments(d){
+  if(d.scope !== 'manager') return d.payments;
+  const byId = new Map(d.payments.map(p=>[p.id, p]));
+  const before = JSON.stringify(LOCAL);
+  LOCAL.added = LOCAL.added.filter(p=>!byId.has(p.id));
+  for(const id of Object.keys(LOCAL.changes)){ const p = byId.get(id); if(!p || p.status === LOCAL.changes[id].status) delete LOCAL.changes[id]; }
+  if(JSON.stringify(LOCAL) !== before) saveJson('dist-manager-local', LOCAL);
+  return d.payments.map(p=>{ const c = LOCAL.changes[p.id]; return c ? {...p, status: c.status, history: (p.history || []).concat(c.added)} : p; })
+    .concat(LOCAL.added);
+}
 function useData(d, meta){
   DATA = d; META = meta;
   if(d.scope === 'manager'){
@@ -854,7 +1053,7 @@ function useData(d, meta){
     else txs.push({...t, kind:'out', to:shortAddr(x.to), cls:{self:'self', other:'other'}[x.kind] || null});
   });
   (d.walletOut || []).forEach(x=>txs.push({id:'w:'+x.id, srcId:x.id, d:sl(x.date), kind:'wout', amt:x.amount, who:ME, to:shortAddr(x.to), cls:sorts[x.id] || null}));
-  d.payments.forEach(x=>txs.push({id:'p:'+x.id, d:sl(x.date), kind:'payThird', yen:x.yen, who:x.who, memo:x.memo, consent:x.status,
+  payments(d).forEach(x=>txs.push({id:'p:'+x.id, d:sl(x.date), kind:'payThird', yen:x.yen, who:x.who, memo:x.memo, consent:x.status,
     rate:x.rate, rateDate:x.rateDate, usdt:x.usdt, code:x.code,
     hist:(x.history || []).map(h=>shortD(toDate(sl(h.date))) + ' ' + EVENT[h.event])}));
   showNote();
@@ -913,6 +1112,7 @@ function render(keepScroll){
   const T = mode==='me'
     ? [['bal','ホーム'],['tx','取引'],['pay','支払い'],['set','設定']]
     : [['bal','ホーム'],['tx','取引'],['agree','受領'+(waitMe?`<span class="badge">${waitMe}</span>`:'')],['set','設定']];
+  if(mode==='me' && DATA && isDirty()) T[3][1] += '<span class="badge">!</span>';
   document.getElementById('tabs').innerHTML = T.map(([k,l])=>`<div class="${tab===k?'on':''}" onclick="tab='${k}';shown=10;render()"><svg class="tab-ic" viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg><span>${l}</span></div>`).join('');
   const V = {me:{bal:meBal, tx:meTx, pay:mePay, set:setView}, you:{bal:youBal, tx:youTx, agree:youAgree, set:setView}};
   document.getElementById('view').innerHTML = (DATA || tab==='set') ? V[mode][tab]() : noData();
@@ -989,6 +1189,7 @@ function render(keepScroll){
 })();
 if(['#tx','#pay','#agree','#set'].includes(location.hash)) tab=location.hash.slice(1);
 // 端末に保存したデータがあれば、それを出す
+LOCAL = loadJson('dist-manager-local') || {added: [], changes: {}};
 (() => { const v = loadJson('dist-manager-data'); if(v && v.data){ try { useData(v.data, v.meta); } catch(e){ DATA = null; } } })();
 render();
 loadRate();
