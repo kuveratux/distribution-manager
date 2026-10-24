@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0a0805">
 <title>DISTRIBUTION Manager</title>
-<meta name="app-version" content="0.4.0">
+<meta name="app-version" content="0.4.1">
 <meta name="apple-mobile-web-app-title" content="DISTRIBUTION Manager">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -38,7 +38,10 @@
   .role{flex:none;font-size:11px;font-weight:700;padding:1px 9px;border-radius:999px;white-space:nowrap;
     color:#1a1204;background:linear-gradient(180deg,var(--gold-1),var(--gold-2) 55%,var(--gold-3));box-shadow:0 0 8px var(--glow)}
   .appbar h1{flex:0 1 auto;overflow:hidden;text-overflow:ellipsis}
-  .appver{margin-left:auto;align-self:flex-start;font-size:11px;color:var(--muted);white-space:nowrap}  /* 版（ヘッダの右上） */
+  /* ヘッダの右：EV と同じく「Version：版」。押したまま（マウスを乗せる）でデータの作成日時。更新中は「更新中…」 */
+  .appver{margin-left:auto;flex:none;white-space:nowrap;font-size:clamp(11px,3.4vw,14px);color:var(--text);opacity:.9}
+  .note.update{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .note.update button{padding:4px 12px;border-radius:8px;border:1px solid var(--gold-2);background:var(--card-2);color:var(--gold-1);cursor:pointer}
   .appbar .seg button{padding:4px 10px;font-size:12px}
   .wrap{max-width:480px;margin:0 auto;padding:12px 16px calc(92px + env(safe-area-inset-bottom));overflow-x:clip}
   .note .ver{float:right;opacity:.7}
@@ -218,9 +221,10 @@
 </head>
 <body>
 <header class="appbar">
-  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver">v0.4.0</span>
+  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver" id="status">Version：0.4.1</span>
 </header>
 <div class="wrap">
+  <div class="note update" id="updateNote" hidden>新しいバージョンがあります。<button onclick="location.reload()">更新する</button></div>
   <div class="note" id="note" hidden></div>
   <div id="view"></div>
 </div>
@@ -823,8 +827,8 @@ function setView(){
   h += `<h2>この端末</h2><div class="card">
     <button class="btn sub" onclick="forgetPass()" ${localStorage.getItem('dist-manager-pass') ? '' : 'disabled'}>覚えた合言葉を消す</button>
     <button class="btn ng" onclick="clearData()" ${DATA ? '' : 'disabled'}>データを消す</button></div>`;
-  h += `<h2>アプリ</h2><div class="card"><div class="kv"><span class="kk">版</span><span>0.4.0</span></div>
-    <button class="btn sub" onclick="updateApp()">最新の版にする</button></div>`;
+  h += `<h2>アプリ</h2><div class="card"><div class="kv"><span class="kk">版</span><span>0.4.1</span></div>
+    <button class="btn sub" onclick="checkUpdate(this)">更新を確認</button></div>`;
   return h;
 }
 function noData(){
@@ -1039,18 +1043,52 @@ async function restoreFromDrive(){
     await restoreBackup(await (await gfetch(G_API + '/' + f.id + '?alt=media')).json());
   } catch(e){ alert(e.message); }
 }
-// 公開中の版を調べ、新しければ入れ替えて開き直す（一時保管を通さずに取る）
-async function updateApp(){
+// 更新（EV と同じ）：公開サイトの一時保管を通さずに最新の版の番号を読む。今より新しければその番号、同じなら null
+async function newerVersion(){
+  const html = await (await fetch('./?t=' + Date.now(), {cache: 'no-store'})).text();
+  const latest = (html.match(/name="app-version" content="([^"]+)"/) || [])[1];
+  return latest && latest !== '0.4.1' ? latest : null;
+}
+// 新しい版の Service Worker に入れ替わるまで待つ（最大 ms）。入れ替わったら true
+function waitForNewWorker(reg, ms){
+  return new Promise(resolve => {
+    let done = false;
+    const finish = v => { if(!done){ done = true; resolve(v); } };
+    navigator.serviceWorker.addEventListener('controllerchange', () => finish(true), {once: true});
+    const watch = w => w && w.addEventListener('statechange', () => { if(w.state === 'activated') finish(true); if(w.state === 'redundant') finish(false); });
+    watch(reg.installing); watch(reg.waiting);
+    reg.addEventListener('updatefound', () => watch(reg.installing));
+    if(reg.waiting) reg.waiting.postMessage('skipWaiting');
+    setTimeout(() => finish(false), ms);
+  });
+}
+async function applyUpdate(){
+  document.getElementById('status').textContent = '更新中…';
   try {
-    const html = await (await fetch('./?v=' + Date.now(), {cache: 'no-store'})).text();
-    const m = html.match(/name="app-version" content="([^"]+)"/);
-    if(!m) throw new Error('公開中の版を読み取れませんでした');
-    if(m[1] === '0.4.0'){ alert('最新の版です（' + m[1] + '）'); return; }
-    if(!confirm('新しい版（' + m[1] + '）があります。入れ替えて開き直しますか？')) return;
-    const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration();
-    if(reg) await reg.update();
-    location.reload();
-  } catch(e){ alert('版を確かめられませんでした（つながっているか確かめてください）'); }
+    const reg = await navigator.serviceWorker.getRegistration();
+    if(reg){
+      const waiting = waitForNewWorker(reg, 15000);
+      await reg.update();
+      const ok = await waiting;
+      if(!ok && !(await newerVersion())){
+        showStatus();
+        alert('新しいバージョンの準備ができませんでした。公開の直後は、反映まで数分かかることがあります。少し待ってから、もう一度お試しください。');
+        return;
+      }
+    }
+  } catch(e){ /* 失敗しても再読み込みで取り直す */ }
+  location.reload();
+}
+async function checkUpdate(btn){
+  const reg = 'serviceWorker' in navigator && await navigator.serviceWorker.getRegistration();
+  if(!reg){ alert('更新を確認できませんでした'); return; }
+  btn.disabled = true;
+  try {
+    const latest = await newerVersion();
+    if(latest){ if(confirm('新しいバージョン（' + latest + '）があります。更新しますか？')) await applyUpdate(); }
+    else alert('最新のバージョンです（0.4.1）');
+  } catch(e){ alert('更新を確認できませんでした（通信を確認してください）'); }
+  finally { btn.disabled = false; }
 }
 function forgetPass(){ try { localStorage.removeItem('dist-manager-pass'); } catch(e){} render(true); alert('覚えた合言葉を消しました'); }
 function clearData(){
@@ -1109,7 +1147,13 @@ function setBase(v){
   try { if(v) localStorage.setItem('dist-manager-base', v); else localStorage.removeItem('dist-manager-base'); } catch(e){}
   useData(DATA, META); render(true);
 }
+function showStatus(){
+  const st = document.getElementById('status');
+  st.textContent = 'Version：0.4.1';
+  st.title = DATA ? 'データの作成日時：' + DATA.generatedAt : 'データはまだ読み込んでいません';
+}
 function showNote(){
+  showStatus();
   const el = document.getElementById('note');
   el.hidden = !DATA;
   if(DATA) el.textContent = (DATA.trial ? '試行データです（作成 ' + DATA.generatedAt + '）。' : '') + (BASE ? '基準日 ' + sl(BASE) + ' で表示しています。' : '') + 'QR は絵だけで、読み取りはボタンで代わりにしています。';
@@ -1244,7 +1288,12 @@ LOCAL = loadJson('dist-manager-local') || {added: [], changes: {}};
 (() => { const v = loadJson('dist-manager-data'); if(v && v.data){ try { useData(v.data, v.meta); } catch(e){ DATA = null; } } })();
 render();
 loadRate();
-if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if(hadController) document.getElementById('updateNote').hidden = false; });
+}
+showStatus();
 </script>
 </body>
 </html>
