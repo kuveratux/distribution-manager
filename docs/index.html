@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0a0805">
 <title>DISTRIBUTION Manager</title>
-<meta name="app-version" content="0.5.0">
+<meta name="app-version" content="0.6.0">
 <meta name="apple-mobile-web-app-title" content="DISTRIBUTION Manager">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -218,12 +218,17 @@
     color:var(--note-text);background:rgba(250,200,80,.10);border:1px solid rgba(243,214,143,.45)}
   .notice .go{margin-left:auto;font-size:12px;white-space:nowrap}
   .card>h2:first-child{margin:0 0 10px}  /* 設定タブ：見出しはカードの中 */
+  .grid .yenl{display:block;margin-bottom:2px}  /* 個人別：数字のすぐ下に円の目安 */
+  .inv-qr{display:flex;justify-content:center;margin:8px 0}
+  .inv-qr svg{width:180px;height:180px;background:#fff;border-radius:8px;padding:6px;box-shadow:0 0 0 2px var(--gold-3)}
+  #toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:9;max-width:90vw;
+    padding:8px 14px;border-radius:10px;background:rgba(20,15,6,.95);border:1px solid var(--edge);color:var(--text);font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.5)}
   .badge{display:inline-block;min-width:16px;padding:0 4px;border-radius:8px;background:var(--gold-2);color:#000;font-size:10px;margin-left:3px}
 </style>
 </head>
 <body>
 <header class="appbar">
-  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver" id="status">Version：0.5.0</span>
+  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver" id="status">Version：0.6.0</span>
 </header>
 <div class="wrap">
   <div class="note update" id="updateNote" hidden>新しいバージョンがあります。<button onclick="location.reload()">更新する</button></div>
@@ -245,7 +250,16 @@
   <button class="btn sub" onclick="document.getElementById('bkDlg').close()">あとで（設定タブから取れます）</button>
 </dialog>
 <div class="tabs" id="tabs"></div>
+<div id="toast" hidden></div>
+<dialog id="invDoneDlg">
+  <div class="label" style="font-size:14px;color:var(--text)">データを受け取りました</div>
+  <div class="s" id="invDoneSteps" style="margin-top:6px"></div>
+  <div class="label" style="margin-top:10px">招待コード</div><div class="code" id="invDoneCode"></div>
+  <button class="btn sub" onclick="copyText(document.getElementById('invDoneCode').textContent,'招待コードをコピーしました')">コードをコピー</button>
+  <button class="btn" onclick="document.getElementById('invDoneDlg').close()">閉じる</button>
+</dialog>
 
+<script src="qrcode.js"></script>
 <script>
 const realToday = () => { const d = new Date(); d.setHours(0,0,0,0); return d; };
 let TODAY = realToday();
@@ -597,7 +611,7 @@ function meBal(){
   h += platform();
   h += `<details class="sec" open><summary>個人別</summary>`;
   people.forEach(p=>{ const x=per[p.id];
-    const k3 = p.self ? ['支出', x.usedSelf] : ['ウォレット', x.give];
+    const k3 = p.self ? ['ウォレット', x.usedSelf] : ['ウォレット', x.give];   // 自分は自分のウォレット（アドレス）から使った分
     const hl = p.self ? '残高' : '預り金';   // 自分の分は預かっているお金ではないので「残高」
     const w = v => (x.alloc? Math.max(0,v)/x.alloc*100:0).toFixed(2)+'%';
     h += `<div class="card"><div class="person-head"><span class="name"><span class="sw gold"></span>${p.name}<span class="ratio" style="margin-left:8px;font-weight:normal">${fp(p.ratio*100)}%</span></span></div>
@@ -605,9 +619,9 @@ function meBal(){
       <div class="rate barcap"><span>${hl} ${fu(x.held)} / 分配累計 ${fu(x.alloc)}</span>
         <span>（<i class="k kh"></i>${hl}：${pc(x.held,x.alloc)}、<i class="k ks"></i>相対：${pc(x.usedHere,x.alloc)}、<i class="k kw"></i>${k3[0]}：${pc(k3[1],x.alloc)}）</span></div>
       <div class="grid grid3">
-        <div><span class="label">分配累計</span><b>${fu(x.alloc)}</b></div>
-        <div><span class="label">支払金</span><b>${fu(x.paid)}</b><span class="rate">${k3[0]} ${fu(k3[1])}<br>相対 ${fu(x.usedHere)}</span></div>
-        <div><span class="label">${hl}</span><b class="amt-in">${fu(x.held)}</b><span class="rate">${yen(x.held)}</span></div>
+        <div><span class="label">分配累計</span><b>${fu(x.alloc)}</b><span class="rate yenl">${yen(x.alloc)}</span></div>
+        <div><span class="label">${p.self ? '支出' : '支払金'}</span><b>${fu(x.paid)}</b><span class="rate yenl">${yen(x.paid)}</span><span class="rate">${k3[0]} ${fu(k3[1])}<br>相対 ${fu(x.usedHere)}</span></div>
+        <div><span class="label">${hl}</span><b class="amt-in">${fu(x.held)}</b><span class="rate yenl">${yen(x.held)}</span></div>
       </div></div>`;
   });
   h += `</details>`;
@@ -807,15 +821,18 @@ function setView(){
       <span class="kk">ファイル</span><span style="word-break:break-all">${META.fileName}</span>
       <span class="kk">読み込み</span><span>${META.importedAt}</span></div>`;
   } else h += `<div class="s">まだデータを読み込んでいません。</div>`;
-  h += `${SCOPE === 'manager' ? '<button class="btn" onclick="fetchFromDrive()">最新データを取得</button>' : ''}
+  if(SCOPE === 'agent') h += agentRecvRows();
+  h += `${SCOPE === 'manager' ? '<button class="btn" onclick="fetchFromDrive()">最新データを取得</button>' : '<button class="btn" onclick="checkPublic(true)">最新データを取得</button>'}
     <label class="btn sub" for="fileIn" style="text-align:center">ファイルから読み込む</label>
     <input type="file" id="fileIn" accept=".json,application/json" hidden onchange="importFile(this)">
-    <div class="rate" style="margin-top:6px">${SCOPE === 'manager' ? '［最新データを取得］は Google ドライブの Manager 用のファイルを読み直します（初回だけファイルを選びます）。' : ''}［ファイルから読み込む］はスマホの中のファイル（${SCOPE==='manager' ? 'dist-manager_…' : 'dist-agent-…'}.json${SCOPE === 'manager' ? '、バックアップ' : ''}）を選びます</div></div>`;
+    ${SCOPE === 'agent' ? '<button class="btn sub" onclick="enterInviteCode()">招待コードを入れる</button>' : ''}
+    <div class="rate" style="margin-top:6px">${SCOPE === 'manager' ? '［最新データを取得］は Google ドライブの Manager 用のファイルを読み直します（初回だけファイルを選びます）。' : '［最新データを取得］は招待で受け取ったファイルを読み直します（開いたときも、新しいデータがあれば自動で読み込みます）。'}［ファイルから読み込む］はスマホの中のファイル（${SCOPE==='manager' ? 'dist-manager_…' : 'dist-agent-…'}.json${SCOPE === 'manager' ? '、バックアップ' : ''}）を選びます</div></div>`;
   if(SCOPE === 'manager'){
     const slot = loadJson('dist-manager-drive');
     h += `<div class="card"><h2>Google ドライブ</h2>
       <div class="kv"><span class="kk">取得先</span><span style="word-break:break-all">${slot ? slot.name : '未設定（［最新データを取得］で選びます）'}</span></div>
       <div class="two"><button class="btn sub" onclick="fetchFromDrive(true)">取得先を選び直す</button><button class="btn sub" onclick="driveUnlink()" ${slot ? '' : 'disabled'}>連携を解除</button></div></div>`;
+    h += inviteCard();
     const bk = loadJson('dist-manager-bk');
     h += `<div class="card"><h2>バックアップ</h2>
       <div class="kv"><span class="kk">前回</span><span>${bk ? bk.at + '（' + bk.where + '）' : 'まだ取っていません'}</span></div>
@@ -834,7 +851,7 @@ function setView(){
   h += `<div class="card"><h2>この端末</h2>
     <button class="btn sub" onclick="forgetPass()" ${localStorage.getItem('dist-manager-pass') ? '' : 'disabled'}>覚えた合言葉を消す</button>
     <button class="btn ng" onclick="clearData()" ${DATA ? '' : 'disabled'}>データを消す</button></div>`;
-  h += `<div class="card"><h2>このアプリについて</h2><div>バージョン：<b>0.5.0</b></div>
+  h += `<div class="card"><h2>このアプリについて</h2><div>バージョン：<b>0.6.0</b></div>
     <button class="btn sub" onclick="checkUpdate(this)">更新を確認</button></div>`;
   return h;
 }
@@ -849,22 +866,23 @@ async function importFile(input){
   if(!file) return;
   try { await importText(await file.text(), file.name); } catch(e){ alert(e.message); }
 }
-async function importText(text, fileName){
+async function importText(text, fileName, opt = {}){
   {
     let json;
     try { json = JSON.parse(text); } catch(e){ throw new Error('データファイルではありません（中身が読めません）'); }
-    if(json.format === 'dist-backup-enc'){ await restoreBackup(json); return; }
-    const d = await decryptIfNeeded(json);
-    if(!d) return;   // 合言葉の入力をやめた
+    if(json.format === 'dist-backup-enc'){ await restoreBackup(json); return true; }
+    const d = await decryptIfNeeded(json, opt.noAsk);
+    if(!d) return false;   // 合言葉の入力をやめた（noAsk のときは、覚えた合言葉で開けなかった）
     validate(d);
     const meta = {fileName, importedAt: nowText()};
     if(!saveJson('dist-manager-data', {data: d, meta})) throw new Error('端末に保存できませんでした（空き容量を確かめてください）');
     saveJson('dist-manager-src', json.format === 'dist-data-enc' ? json : null);
     useData(d, meta);
     tab = 'bal'; render();
-    alert('読み込みました（作成 ' + d.generatedAt + '）');
+    if(!opt.quiet) alert('読み込みました（作成 ' + d.generatedAt + '）');
     // 初めて読み込んだとき（バックアップをまだ取っていない Manager）は、バックアップを勧める
     if(SCOPE === 'manager' && !loadJson('dist-manager-bk')){ markDirty(); Drive.preload(); document.getElementById('bkDlg').showModal(); }
+    return true;
   }
 }
 // 最新データを取得（Manager。ESV と同じ）：初回だけファイルを選び、以降は同じファイルを読み直す。repick：選び直す
@@ -906,11 +924,12 @@ async function decryptData(enc, pass){
   const key = await crypto.subtle.deriveKey({name:'PBKDF2', hash:enc.kdf.hash, salt:b64(enc.kdf.salt), iterations:enc.kdf.iterations}, base, {name:'AES-GCM', length:256}, false, ['decrypt']);
   return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM', iv:b64(enc.cipher.iv)}, key, b64(enc.data))));
 }
-async function decryptIfNeeded(json){
+async function decryptIfNeeded(json, noAsk){
   if(json.format !== 'dist-data-enc') return json;
   if(json.version > ENC_VERSION_MAX) throw new Error('このデータは新しい版のアプリ用です。アプリを開き直して更新してから、もう一度読み込んでください');
   const saved = localStorage.getItem('dist-manager-pass');
   if(saved){ try { const d = await decryptData(json, saved); PASS = saved; return d; } catch(e){ /* 合言葉が変わった → 聞く */ } }
+  if(noAsk) return null;   // 開いたときの自動の読み込みでは、合言葉を聞かない
   let msg = '合言葉を入れてください';
   for(;;){
     const a = await askPass(msg);
@@ -1132,7 +1151,7 @@ async function restoreFromDrive(){
 async function newerVersion(){
   const html = await (await fetch('./?t=' + Date.now(), {cache: 'no-store'})).text();
   const latest = (html.match(/name="app-version" content="([^"]+)"/) || [])[1];
-  return latest && latest !== '0.5.0' ? latest : null;
+  return latest && latest !== '0.6.0' ? latest : null;
 }
 // 新しい版の Service Worker に入れ替わるまで待つ（最大 ms）。入れ替わったら true
 function waitForNewWorker(reg, ms){
@@ -1171,7 +1190,7 @@ async function checkUpdate(btn){
   try {
     const latest = await newerVersion();
     if(latest){ if(confirm('新しいバージョン（' + latest + '）があります。更新しますか？')) await applyUpdate(); }
-    else alert('最新のバージョンです（0.5.0）');
+    else alert('最新のバージョンです（0.6.0）');
   } catch(e){ alert('更新を確認できませんでした（通信を確認してください）'); }
   finally { btn.disabled = false; }
 }
@@ -1234,7 +1253,7 @@ function setBase(v){
 }
 function showStatus(){
   const st = document.getElementById('status');
-  st.textContent = 'Version：0.5.0';
+  st.textContent = 'Version：0.6.0';
   st.title = DATA ? 'データの作成日時：' + DATA.generatedAt : 'データはまだ読み込んでいません';
 }
 function showNote(){
@@ -1277,6 +1296,172 @@ async function fetchDayRate(full){
     return true;
   } catch(e){ return false; }
 }
+
+/* ---------- 招待（ESV と同じ考え方） ---------- */
+// 招待リンク：Agent アプリの URL ＋ #invite=<招待コード>（# の後ろはサーバーに送られない）。招待コード＝Agent 用のデータのファイルの ID
+// 合言葉は招待に入れない（別の手段で伝える）。ファイルの ID は端末の中にだけ覚え、プログラムには書かない
+// Agent 用のファイルは、ドライブで「リンクを知っている全員」（閲覧者）に共有する。ログインなしで、API キー（kuveratux.github.io からだけ使える）で読む
+function inviteIdOf(text){
+  const t = String(text || '').trim();
+  const m = t.match(/[#&?]invite=([A-Za-z0-9_-]+)/) || t.match(/\/d\/([A-Za-z0-9_-]+)/) || t.match(/[?&]id=([A-Za-z0-9_-]+)/) || t.match(/^([A-Za-z0-9_-]+)$/);
+  return m && m[1].length >= 20 ? m[1] : null;
+}
+const Public = {
+  async get(url){
+    const res = await fetch(url + '&key=' + encodeURIComponent(GOOGLE.apiKey));
+    if(!res.ok) throw Object.assign(new Error('共有のファイルを読めませんでした（HTTP ' + res.status + '）'), {status: res.status});
+    return res;
+  },
+  meta(id){ return this.get(G_API + '/' + encodeURIComponent(id) + '?fields=id,name,modifiedTime,md5Checksum&supportsAllDrives=true').then(r => r.json()); },
+  text(id){ return this.get(G_API + '/' + encodeURIComponent(id) + '?alt=media&supportsAllDrives=true').then(r => r.text()); },
+};
+let toastTimer = null;
+function toast(msg){
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.hidden = true; }, 3500);
+}
+async function copyText(text, done){
+  try { await navigator.clipboard.writeText(text); toast(done); } catch(e){ toast('コピーできませんでした。長押ししてコピーしてください'); }
+}
+
+// ---- Manager：Agent の招待（人ごと。dist-manager-invites ＝ {記号: {id, name}}） ----
+const inviteUrlOf = id => location.origin + location.pathname.replace(/distribution-manager/i, 'distribution-agent').replace(/index\.html$/, '') + '#invite=' + id;
+let inviteMsg = '';
+async function addInvite(input){
+  const id = inviteIdOf(input.value);
+  if(!input.value.trim()) return;
+  if(!id){ inviteMsg = 'リンクの形が正しくありません。ドライブの［リンクをコピー］で取ったリンクをそのまま貼ってください。'; render(true); return; }
+  inviteMsg = '共有の確認中…'; render(true);
+  try {
+    const meta = await Public.meta(id);
+    const name = String(meta.name || '');
+    const m = name.match(/dist-agent-([A-Za-z0-9]+)_/);
+    if(/manager/i.test(name)) inviteMsg = '「' + name + '」は Manager 用のファイルです。Manager 用のファイルは共有にしないでください（ドライブで共有を「制限付き」に戻してください）。';
+    else if(!m) inviteMsg = '「' + name + '」は Agent 用のファイルではないようです（dist-agent-記号_… のファイルの共有のリンクを貼ってください）。';
+    else if(!people.some(p => p.id === m[1] && !p.self)) inviteMsg = '「' + name + '」の記号（' + m[1] + '）の人がデータにいません。';
+    else {
+      const inv = loadJson('dist-manager-invites') || {};
+      inv[m[1]] = {id, name}; saveJson('dist-manager-invites', inv);
+      inviteMsg = '共有の確認：読めました（' + name + '）。' + pname(m[1]) + 'の招待を作りました';
+    }
+  } catch(e){
+    inviteMsg = 'ログインなしで読めませんでした。ドライブで、このファイルの共有を「リンクを知っている全員」（閲覧者）にしてください。';
+  }
+  render(true);
+}
+function forgetInvite(pid){
+  if(!confirm(pname(pid) + 'の招待を、この端末から消しますか？（ドライブの共有や、Agent の端末には影響しません）')) return;
+  const inv = loadJson('dist-manager-invites') || {}; delete inv[pid]; saveJson('dist-manager-invites', inv); inviteMsg = ''; render(true);
+}
+function inviteCard(){
+  const inv = loadJson('dist-manager-invites') || {};
+  let h = `<div class="card"><h2>Agent の招待</h2>
+    <div class="rate">Agent 用のデータのファイル（dist-agent-記号_…）を、ドライブで「リンクを知っている全員」（閲覧者）に共有し、［リンクをコピー］で取ったリンクを貼ってください。ファイル名からだれの分かを見分けます。リンクはこの端末の中にだけ覚えます。合言葉は招待に入らないので、別の手段で伝えてください。</div>
+    <label class="f">Agent 用のファイルの共有のリンク</label><input id="invSrc" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="https://drive.google.com/file/d/…" onchange="addInvite(this)">
+    ${inviteMsg ? `<div class="rate" style="margin-top:6px">${inviteMsg}</div>` : ''}`;
+  for(const p of people.filter(p => !p.self && inv[p.id])){
+    const id = inv[p.id].id, url = inviteUrlOf(id);
+    let qr = '';
+    try { const q = qrcode(0, 'M'); q.addData(url); q.make(); qr = q.createSvgTag({cellSize: 4, margin: 4, scalable: true}); } catch(e){}
+    h += `<details class="fold"><summary>${p.name}（${p.id}）の招待</summary>
+      <div class="inv-qr">${qr}</div>
+      <div class="label">招待リンク</div><div class="code">${url}</div>
+      <button class="btn" onclick="copyText('${url}','招待リンクをコピーしました')">リンクをコピー</button>
+      <div class="label" style="margin-top:10px">招待コード（iPhone でホーム画面のアプリに入れるとき）</div><div class="code">${id}</div>
+      <button class="btn sub" onclick="copyText('${id}','招待コードをコピーしました')">コードをコピー</button>
+      <button class="btn sub" onclick="forgetInvite('${p.id}')">この端末から消す</button></details>`;
+  }
+  return h + `</div>`;
+}
+
+// ---- Agent：受け取り（dist-agent-drive ＝ {id, name, md5, checkedAt}） ----
+const isStandalone = () => (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isInAppBrowser = () => /\bLine\/|FBAN|FBAV|Instagram|MicroMessenger|; wv\)/i.test(navigator.userAgent);
+let recvBusy = false, recvState = '';
+// 招待リンクで開いたときの招待コード。読んだらアドレス欄からすぐ消す（履歴やブックマークに残さない）
+function takeInviteFromUrl(){
+  const id = /invite=/.test(location.hash) ? inviteIdOf(location.hash) : null;
+  if(/invite=/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);
+  return id;
+}
+// 招待を受け取る：ログインなしで読み、合言葉で開けたら、そのファイルを覚える（開けなければ何も変えない）
+async function acceptInvite(id){
+  if(recvBusy) return;
+  const slot = loadJson('dist-manager-drive');
+  if(slot && slot.id === id){ checkPublic(true); return; }   // 同じ招待をもう一度開いた
+  recvBusy = true;
+  try {
+    let meta;
+    try { meta = await Public.meta(id); } catch(e){
+      alert('招待のデータを受け取れませんでした。招待コード（リンク）が正しいか、通信の状態を確かめてください。続くときは、Manager に共有の設定を確かめてもらってください。');
+      return;
+    }
+    if(DATA && !confirm('招待を受け取りました。今のデータを、招待されたデータに置き換えますか？')) return;
+    const ok = await importText(await Public.text(id), meta.name, {quiet: true});
+    if(!ok) return;   // 合言葉の入力をやめた
+    saveJson('dist-manager-drive', {id, name: meta.name, md5: meta.md5Checksum, checkedAt: nowText()});
+    recvState = 'ok'; render(true);
+    if(isStandalone()) toast('データを受け取りました（作成 ' + DATA.generatedAt + '）');
+    else showInviteDone(id);
+  } catch(e){ alert('受け取れませんでした（' + e.message + '）'); }
+  finally { recvBusy = false; }
+}
+// ブラウザで招待リンクを開いたとき：受け取ったうえで、ホーム画面に追加する手順を出す
+function showInviteDone(id){
+  const steps = isInAppBrowser()
+    ? 'LINE などのアプリの中では、ホーム画面に追加できません。右上のメニューから「ブラウザで開く」（Safari・Chrome）を選んで、招待リンクを開き直してください。'
+    : isIOS()
+      ? '① 共有ボタン →「ホーム画面に追加」　② 追加したアプリを開き、設定タブの［招待コードを入れる］に、下の招待コードを入れる（iPhone は、ホーム画面のアプリと Safari が別々にデータを持つため）'
+      : 'メニュー（︙）→「ホーム画面に追加」または「アプリをインストール」。追加したアプリには、受け取ったデータがそのまま入っています';
+  document.getElementById('invDoneSteps').textContent = steps;
+  document.getElementById('invDoneCode').textContent = id;
+  document.getElementById('invDoneDlg').showModal();
+}
+// 受け取り先のファイルを確かめる。manual：ボタンから（変わっていなくても読み直す。合言葉を聞いてよい）
+// 開いたとき（manual でない）：変わっていれば、覚えた合言葉で開けるときだけ読み込む
+async function checkPublic(manual){
+  const slot = loadJson('dist-manager-drive');
+  if(!slot){ if(manual) alert('受け取り先が決まっていません。招待リンクを開くか、［招待コードを入れる］から始めてください。'); return; }
+  if(recvBusy) return;
+  recvBusy = true;
+  try {
+    const meta = await Public.meta(slot.id);
+    slot.checkedAt = nowText(); recvState = 'ok';
+    if(manual || meta.md5Checksum !== slot.md5){
+      const ok = await importText(await Public.text(slot.id), meta.name, {quiet: true, noAsk: !manual});
+      if(ok){ slot.md5 = meta.md5Checksum; slot.name = meta.name; toast('新しいデータを読み込みました（作成 ' + DATA.generatedAt + '）'); }
+      else if(!manual) toast('新しいデータがあります。設定タブの［最新データを取得］で読み込んでください');
+    } else if(manual) toast('最新のデータです（作成 ' + (DATA ? DATA.generatedAt : '—') + '）');
+    saveJson('dist-manager-drive', slot);
+  } catch(e){
+    recvState = 'ng';
+    if(manual) alert('受け取れませんでした。通信の状態を確かめてください。続くときは、Manager に共有の設定を確かめてもらってください。');
+  } finally { recvBusy = false; if(tab === 'set') render(true); }
+}
+function enterInviteCode(){
+  const t = prompt('Manager から受け取った招待コード（または招待リンク）を貼り付けてください');
+  if(t == null) return;
+  const id = inviteIdOf(t);
+  if(!id){ alert('招待コードの形が正しくありません。Manager から受け取ったコード（またはリンク）をそのまま貼り付けてください。'); return; }
+  acceptInvite(id);
+}
+function agentRecvRows(){
+  const slot = loadJson('dist-manager-drive');
+  return `<div class="kv" style="margin-top:8px">
+    <span class="kk">受け取り先</span><span>${slot ? '設定済み（' + slot.name.replace(/_[^_]+\.json$/, '_….json') + '）' : '未設定（招待リンクを開くか、招待コードを入れてください）'}</span>
+    <span class="kk">最終確認</span><span>${slot && slot.checkedAt ? slot.checkedAt : '—'}</span>
+    ${recvState === 'ng' ? '<span class="kk">状態</span><span>受け取れませんでした（共有の設定を Manager に確かめてもらってください）</span>' : ''}</div>`;
+}
+// 起動したとき（Agent）：招待リンクで開いたら受け取る。そうでなければ、受け取り先に新しいデータがないか確かめる
+function startAgentReceive(){
+  if(SCOPE !== 'agent') return;
+  const inv = takeInviteFromUrl();
+  if(inv){ acceptInvite(inv); return; }
+  checkPublic(false);
+}
+window.addEventListener('hashchange', () => { if(SCOPE !== 'agent') return; const inv = takeInviteFromUrl(); if(inv) acceptInvite(inv); });
 
 /* ---------- 共通 ---------- */
 function setMode(m){ mode=m; tab='bal'; filter='all'; shown=10; render(); }
@@ -1373,6 +1558,7 @@ LOCAL = loadJson('dist-manager-local') || {added: [], changes: {}};
 (() => { const v = loadJson('dist-manager-data'); if(v && v.data){ try { useData(v.data, v.meta); } catch(e){ DATA = null; } } })();
 render();
 loadRate();
+startAgentReceive();
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('sw.js').catch(()=>{});
   const hadController = !!navigator.serviceWorker.controller;
