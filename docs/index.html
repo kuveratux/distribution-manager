@@ -62,7 +62,9 @@
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;margin-top:10px}
   .grid div b{display:block;font-size:16px}
   .grid3{grid-template-columns:1fr 1fr 1fr}
-  .grid3 b .us{display:block;font-size:10px;line-height:1.2}  /* 3列の欄は USDT を数字の下にそろえる */
+  .grid3{gap:8px 6px}
+  .grid3 b{font-size:clamp(11px,3.4vw,16px);white-space:nowrap}  /* 3列の欄は数字と USDT を1行に収める */
+  .nw{white-space:nowrap}  /* 数字と USDT の間では折り返さない */
   .person-head{display:flex;justify-content:space-between;align-items:baseline}
   .person-head .name{font-weight:bold;font-size:16px}
   .person-head .ratio{font-size:12px;color:var(--muted)}
@@ -264,7 +266,7 @@ try { hide = localStorage.getItem('dist-manager-hide')==='1'; } catch(e){}
 const MASK = '＊＊＊＊';
 const f2 = n => hide ? MASK : n.toLocaleString('ja-JP',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fy = n => (hide ? MASK : Math.round(n).toLocaleString('ja-JP')) + ' 円';
-const fu = n => f2(n) + '<span class="us"> USDT</span>';
+const fu = n => '<span class="nw">' + f2(n) + '<span class="us"> USDT</span></span>';
 const f1 = n => hide ? MASK : (Math.round(n*10)/10).toLocaleString('ja-JP',{minimumFractionDigits:1,maximumFractionDigits:1});
 const fp = v => hide ? '＊＊' : v;           // 比率・割合・レート
 const bw = v => hide ? '0%' : v;            // 棒の長さ
@@ -797,7 +799,7 @@ function setView(){
   h += `<h2>この端末</h2><div class="card">
     <button class="btn sub" onclick="forgetPass()" ${localStorage.getItem('dist-manager-pass') ? '' : 'disabled'}>覚えた合言葉を消す</button>
     <button class="btn ng" onclick="clearData()" ${DATA ? '' : 'disabled'}>データを消す</button></div>`;
-  h += `<h2>アプリ</h2><div class="card"><div class="kv"><span class="kk">版</span><span>0.3.2</span></div></div>`;
+  h += `<h2>アプリ</h2><div class="card"><div class="kv"><span class="kk">版</span><span>0.3.3</span></div></div>`;
   return h;
 }
 function noData(){
