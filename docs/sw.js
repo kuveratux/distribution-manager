@@ -1,6 +1,6 @@
 // オフラインでも開けるように、アプリの枠を端末に保管する。
 // 保管庫の名前は頭に dist-manager を付け、自分のものだけを消す（同じ kuveratux.github.io のほかのアプリのものは消さない）
-const CACHE = 'dist-manager-shell-0.3.8';
+const CACHE = 'dist-manager-shell-0.3.9';
 const FILES = ['./', 'index.html', 'icon.svg', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 
 self.addEventListener('install', e => {

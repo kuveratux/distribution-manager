@@ -159,7 +159,7 @@
   details.sec .card::before{display:none}
   details.sec .card:last-child{margin-bottom:0}
   /* 内側の枠なし（プラットフォーム収益） */
-  details.sec .plain{padding:0 4px}
+  details.sec .plain{padding:0 4px;margin-top:-10px}  /* 題名の下の余白を打ち消し、1行目も線と線の真ん中に */
   details.sec>summary::before{content:'▸';color:var(--gold-2)}
   details.sec[open]>summary::before{content:'▾'}
   details summary::-webkit-details-marker{display:none}
@@ -820,7 +820,7 @@ function setView(){
   h += `<h2>この端末</h2><div class="card">
     <button class="btn sub" onclick="forgetPass()" ${localStorage.getItem('dist-manager-pass') ? '' : 'disabled'}>覚えた合言葉を消す</button>
     <button class="btn ng" onclick="clearData()" ${DATA ? '' : 'disabled'}>データを消す</button></div>`;
-  h += `<h2>アプリ</h2><div class="card"><div class="kv"><span class="kk">版</span><span>0.3.8</span></div></div>`;
+  h += `<h2>アプリ</h2><div class="card"><div class="kv"><span class="kk">版</span><span>0.3.9</span></div></div>`;
   return h;
 }
 function noData(){
