@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0a0805">
 <title>DISTRIBUTION Manager</title>
-<meta name="app-version" content="0.7.1">
+<meta name="app-version" content="0.7.2">
 <meta name="apple-mobile-web-app-title" content="DISTRIBUTION Manager">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -232,13 +232,15 @@
   #toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:9;max-width:90vw;
     padding:8px 14px;border-radius:10px;background:rgba(20,15,6,.95);border:1px solid var(--edge);color:var(--text);font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.5)}
   .row .mini{flex:none;white-space:nowrap}
+  .row.dsub{padding:4px 0 4px 16px;border-top:none}  /* 詳細の内訳の行（字下げ） */
+  .row.dsub .l,.row.dsub .a{font-size:12px;color:var(--muted)}
   .addr{text-decoration:underline dotted;text-underline-offset:3px;cursor:pointer}  /* 押すと名前を付けられるアドレス */
   .badge{display:inline-block;min-width:16px;padding:0 4px;border-radius:8px;background:var(--gold-2);color:#000;font-size:10px;margin-left:3px}
 </style>
 </head>
 <body>
 <header class="appbar">
-  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver" id="status">Version：0.7.1</span>
+  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver" id="status">Version：0.7.2</span>
 </header>
 <div class="wrap">
   <div class="note update" id="updateNote" hidden>新しいバージョンがあります。<button onclick="location.reload()">更新する</button></div>
@@ -411,13 +413,13 @@ function segs(x, parts){
 }
 const pc = (v, all) => fp(Math.round(all? Math.max(0,v)/all*100 : 0) + '%');
 const legend = `<div class="legend"><span><i style="background:var(--out)"></i>支出</span><span><i style="background:var(--sky)"></i>ウォレット</span><span><i style="background:var(--in)"></i>未受領</span><span>（ウォレット＋未受領＝残高）</span></div>`;
+// Agent の残高の詳細：大きな行（金額と円の目安）と、その下に字下げした内訳の行
 function detail(x, ratioLabel){
-  return `<div class="grid">
-      <div><span class="label">分配累計${ratioLabel||''}</span><b>${fu(x.alloc)}</b></div>
-      <div><span class="label">支出</span><b class="amt-out">${fu(x.used)}</b><span class="rate">相対で ${fu(x.usedHere)}・ウォレットから ${fu(x.usedWallet)}</span></div>
-      <div><span class="label">ウォレット</span><b class="amt-give">${fu(x.wallet)}</b><span class="rate">受け取り済み・未支出</span></div>
-      <div><span class="label">未受領</span><b class="amt-in">${fu(x.unrec)}</b></div>
-    </div>`;
+  const main = (label, v) => `<div class="row"><div class="l"><b>${label}</b></div><div class="a"><b>${fu(v)}</b><div class="rate">${yen(v)}</div></div></div>`;
+  const sub = (label, v) => `<div class="row dsub"><div class="l">${label}</div><div class="a">${fu(v)}</div></div>`;
+  return main('分配累計' + (ratioLabel || ''), x.alloc)
+    + main('支出', x.used) + sub('相対', x.usedHere) + sub('ウォレット', x.usedWallet)
+    + main('残高', x.bal) + sub('受領済み（ウォレット）', x.wallet) + sub('未受領', x.unrec);
 }
 const rateLine = () => `<div class="rate">${RATE ? `1 USDT ＝ ${fp(RATE)} 円（${RATE_AT}）` : 'レートを取得できていません（つながったら取り直します）'}</div>`;
 
@@ -776,7 +778,7 @@ function youBal(){
     <div class="bar" style="border:1px solid var(--line);height:12px">${segs(x, [['kh',x.unrec],['kw',x.wallet]])}</div>
     <div class="rate barcap"><span>残高 ${fu(x.bal)} / 分配累計 ${fu(x.alloc)}</span>
       <span>（<i class="k kh"></i>未受領：${pc(x.unrec,x.alloc)}、<i class="k kw"></i>ウォレット：${pc(x.wallet,x.alloc)}）</span></div>
-    <details class="fold"><summary>内訳</summary>${detail(x, `（${fp(kuchi(p.ratio))}）`)}</details></div>
+    <details class="fold"><summary>詳細</summary>${detail(x, `（${fp(kuchi(p.ratio))}）`)}</details></div>
     
     ${platform()}
     <details class="sec"><summary>実績と推移</summary>
@@ -872,7 +874,7 @@ function setView(){
   h += `<div class="card"><h2>この端末</h2>
     <button class="btn sub" onclick="forgetPass()" ${localStorage.getItem('dist-manager-pass') ? '' : 'disabled'}>覚えた合言葉を消す</button>
     <button class="btn ng" onclick="clearData()" ${DATA ? '' : 'disabled'}>データを消す</button></div>`;
-  h += `<div class="card"><h2>このアプリについて</h2><div>バージョン：<b>0.7.1</b></div>
+  h += `<div class="card"><h2>このアプリについて</h2><div>バージョン：<b>0.7.2</b></div>
     <button class="btn sub" onclick="checkUpdate(this)">更新を確認</button></div>`;
   return h;
 }
@@ -1173,7 +1175,7 @@ async function restoreFromDrive(){
 async function newerVersion(){
   const html = await (await fetch('./?t=' + Date.now(), {cache: 'no-store'})).text();
   const latest = (html.match(/name="app-version" content="([^"]+)"/) || [])[1];
-  return latest && latest !== '0.7.1' ? latest : null;
+  return latest && latest !== '0.7.2' ? latest : null;
 }
 // 新しい版の Service Worker に入れ替わるまで待つ（最大 ms）。入れ替わったら true
 function waitForNewWorker(reg, ms){
@@ -1212,7 +1214,7 @@ async function checkUpdate(btn){
   try {
     const latest = await newerVersion();
     if(latest){ if(confirm('新しいバージョン（' + latest + '）があります。更新しますか？')) await applyUpdate(); }
-    else alert('最新のバージョンです（0.7.1）');
+    else alert('最新のバージョンです（0.7.2）');
   } catch(e){ alert('更新を確認できませんでした（通信を確認してください）'); }
   finally { btn.disabled = false; }
 }
@@ -1275,7 +1277,7 @@ function setBase(v){
 }
 function showStatus(){
   const st = document.getElementById('status');
-  st.textContent = 'Version：0.7.1';
+  st.textContent = 'Version：0.7.2';
   st.title = DATA ? 'データの作成日時：' + DATA.generatedAt : 'データはまだ読み込んでいません';
 }
 function showNote(){
