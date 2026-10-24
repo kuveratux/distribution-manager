@@ -190,6 +190,15 @@
   .swipe-hint.go{transition:transform .25s ease-in,opacity .25s ease-in;opacity:0 !important}
   .swipe-hint.right.go{transform:translateY(-50%) translateX(-60vw)}
   .swipe-hint.left.go{transform:translateY(-50%) translateX(60vw)}
+  /* 設定タブ・合言葉の入力 */
+  .kv{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:4px 12px;font-size:13px}
+  .kv .kk{color:var(--muted)}
+  .pf-img{height:22px;max-width:140px;object-fit:contain;vertical-align:middle;margin-right:2px}
+  dialog{background:var(--card);color:var(--text);border:1px solid var(--edge);border-radius:14px;padding:16px;width:min(340px,90vw)}
+  dialog::backdrop{background:rgba(0,0,0,.6)}
+  dialog input[type=password]{margin-top:8px}
+  label.chk{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);margin:10px 0 0}
+  label.chk input{width:auto}
   .badge{display:inline-block;min-width:16px;padding:0 4px;border-radius:8px;background:var(--gold-2);color:#000;font-size:10px;margin-left:3px}
 </style>
 </head>
@@ -198,53 +207,35 @@
   <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span>
 </header>
 <div class="wrap">
-  <div class="note">ダミーのデータです（分配は1回 6,500 USDT）。QR は絵だけで、読み取りはボタンで代わりにしています。<span class="ver">版 0.1.2</span></div>
+  <div class="note" id="note" hidden></div>
   <div id="view"></div>
 </div>
+<dialog id="passDlg">
+  <form method="dialog">
+    <div class="label" id="passMsg">合言葉を入れてください</div>
+    <input id="passInput" type="password" autocomplete="off">
+    <label class="chk"><input id="passSave" type="checkbox" checked> この端末に覚える</label>
+    <div class="two"><button class="btn sub" value="cancel">やめる</button><button class="btn" value="ok">読み込む</button></div>
+  </form>
+</dialog>
 <div class="tabs" id="tabs"></div>
 
 <script>
 const TODAY = (()=>{ const d = new Date(); d.setHours(0,0,0,0); return d; })();
 const DIST_MONTHS = 3; // 分配は3か月に1回
-// 今のレート（残高の円表示、1時間ごと）
-const RATE = 156.48, RATE_AT = '10/23 14:05';
-// 支払い用：その日の10時のレート（仲値そのまま）。10時より前は前の日のレート
-const DAY_RATE = {'2026/1/16':157.80, '2026/4/16':143.20, '2026/7/16':148.60, '2026/10/16':150.90, '2026/6/12':155.10, '2026/9/14':150.20, '2026/10/20':157.50, '2026/10/21':157.20, '2026/10/22':156.90, '2026/10/23':156.48};
-const people = [
-  {id:'M', name:'自分', ratio:0.5, self:true, color:'var(--s1)'},
-  {id:'A', name:'Aさん', ratio:0.25, color:'var(--s2)'},
-  {id:'B', name:'Bさん', ratio:0.25, color:'var(--s3)'},
-];
-// 相対のアドレス（固定、複数登録できる）。ここへの送金は自動で「相対へ移した」
-const SOTAI = [{id:'S1', name:'相対1', addr:'0x7a3f…c210'}, {id:'S2', name:'相対2', addr:'0x19be…04d7'}];
-// kind: recv=分配（受け取り） give=相手のウォレットへ move=相対へ移した payThird=相対で支払い（円で入力）
+// 今のレート（残高の円表示）：CoinGecko から取る。前回から1時間たっていたら取り直す（1時間に1回まで）。取れないときは前回の値
+let RATE = null, RATE_AT = '';
+// 支払い用：その日の日本時間10時のレート（仲値そのまま）。10時より前は前の日のレート。CoinGecko の値を取って端末に覚える
+const DAY_RATE = loadJson('dist-manager-dayrate') || {};
+// 読み込んだデータ（設定タブで読み込む）から作るもの
+// people：人（Manager は全員、Agent は自分だけ）。SOTAI：相対のアドレス（ここへの送金は「相対へ移した」）
+// txs の kind: recv=分配 give=相手のウォレットへ move=相対へ移した payThird=相対で支払い（円で入力）
 //       out=相対・相手のアドレス以外への送金（cls: other=対象外 self=自分の支払い〔どちらもエクセルで仕分け〕 null=未仕分け。どれもウォレットの残高は減る）
-//       wout=相手のウォレットから送金（相手用アプリの中だけで仕分け。cls: spend=支出 other=対象外 null=未仕分け）
-// consent: self=合意不要（自分の分） wait=合意待ち ok=合意済み no=合意なし cancel=取り消し
-let txs = [
-  {id:1,  d:'2026/01/16 10:00', kind:'recv', amt:6500},
-  {id:2,  d:'2026/02/10 13:30', kind:'out', amt:300, to:'0x55c1…9e02', cls:'other'},
-  {id:20, d:'2026/08/05 18:20', kind:'out', amt:200, to:'0x3be0…5a71', cls:'self'},
-  {id:19, d:'2026/10/12 16:45', kind:'out', amt:150, to:'0x8d02…77ab', cls:null},
-  {id:3,  d:'2026/03/05 21:05', kind:'give', amt:600, who:'B', match:true},
-  {id:14, d:'2026/04/02 12:00', kind:'wout', amt:150, who:'B', cls:'spend'},
-  {id:4,  d:'2026/04/16 10:00', kind:'recv', amt:6500},
-  {id:5,  d:'2026/05/20 11:20', kind:'move', amt:2000, to:'S1'},
-  {id:6,  d:'2026/06/12 19:40', kind:'payThird', yen:46500, who:'B', memo:'食事', consent:'ok', hist:['6/12 合意']},
-  {id:7,  d:'2026/07/16 10:00', kind:'recv', amt:6500},
-  {id:8,  d:'2026/09/01 15:10', kind:'move', amt:1000, to:'S2'},
-  {id:15, d:'2026/08/20 20:00', kind:'give', amt:1200, who:'A', match:true},
-  {id:21, d:'2026/09/30 19:00', kind:'give', amt:800, who:'A', match:true},
-  {id:16, d:'2026/09/02 14:30', kind:'wout', amt:300, who:'A', cls:'spend'},
-  {id:17, d:'2026/10/05 09:40', kind:'wout', amt:100, who:'A', cls:'other'},
-  {id:18, d:'2026/10/10 17:20', kind:'wout', amt:120, who:'B', cls:null},
-  {id:9,  d:'2026/09/14 18:00', kind:'payThird', yen:30000, who:'M', memo:'交通費', consent:'self', hist:[]},
-  {id:22, d:'2026/09/14 20:00', kind:'payThird', yen:31000, who:'A', memo:'食事', consent:'ok', hist:['9/14 合意']},
-  {id:10, d:'2026/10/16 10:00', kind:'recv', amt:6500},
-  {id:11, d:'2026/10/21 19:40', kind:'payThird', yen:55000, who:'B', memo:'食事', consent:'ok', hist:['10/21 合意']},
-  {id:12, d:'2026/10/22 08:30', kind:'payThird', yen:18000, who:'B', memo:'差し入れ', consent:'no', hist:['10/22 合意しない']},
-  {id:13, d:'2026/10/23 12:10', kind:'payThird', yen:24000, who:'B', memo:'日用品', consent:'wait', hist:[]},
-];
+//       wout=相手のウォレットから送金（Agent の端末の中だけで仕分け。cls: spend=支出 other=対象外 null=未仕分け）
+// consent: self=自分の分（印は出さない） wait=合意待ち ok=合意済み no=合意なし cancel=取り消し
+let DATA = null, META = null, people = [], SOTAI = [], txs = [], ME = '';
+const COLORS = ['var(--s1)', 'var(--s2)', 'var(--s3)'];
+const DATA_VERSION_MAX = 1, ENC_VERSION_MAX = 1;
 let mode = 'me', tab = 'bal', filter = 'all', shown = 10;
 // 残高の状態：手元の合計 ÷ 未払い
 const MARKS = [[1.10,'◎','var(--in)','未払いの110%以上'],[1.00,'〇','var(--in)','100%以上'],[0.95,'△','var(--note-text)','95%以上'],[0,'×','var(--out)','95%未満']];
@@ -253,6 +244,8 @@ let agreeFlow = {step:0, tx:null};
 let seq = 100;
 
 const KIND = {recv:'分配', give:'ウォレットへ', move:'相対へ移した', payThird:'相対で支払い', out:'対象外', wout:'ウォレットから送金'};
+function loadJson(k){ try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch(e){ return null; } }
+function saveJson(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch(e){ return false; } }
 let hide = false;
 try { hide = localStorage.getItem('dist-manager-hide')==='1'; } catch(e){}
 const MASK = '＊＊＊＊';
@@ -266,7 +259,7 @@ const eyeBtn = () => `<button class="eye ${hide?'off':''}" onclick="toggleHide()
 function toggleHide(){ hide=!hide; try{ localStorage.setItem('dist-manager-hide', hide?'1':'0'); }catch(e){} render(true); }
 const EYE = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>`;
 const EYE_OFF = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.9 17.9A10.4 10.4 0 0 1 12 19C5 19 1 12 1 12a18.5 18.5 0 0 1 5.1-5.9M9.9 5.2A9.6 9.6 0 0 1 12 5c7 0 11 7 11 7a18.6 18.6 0 0 1-2.2 3.2M14.1 14.1a3 3 0 1 1-4.2-4.2"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
-const yen = n => '約 ' + fy(n*RATE);
+const yen = n => RATE ? '約 ' + fy(n*RATE) : '約 ― 円';
 const pname = id => people.find(p=>p.id===id).name;
 const floor2 = n => Math.floor(n*100+1e-9)/100;
 const toDate = d => { const [ymd, hm] = d.split(' '); const [y,m,dd] = ymd.split('/').map(Number); const [h,mi] = (hm||'0:0').split(':').map(Number); return new Date(y,m-1,dd,h,mi); };
@@ -274,6 +267,7 @@ const showD = d => { const x = toDate(d); return `${x.getMonth()+1}/${x.getDate(
 const shortD = dt => `${dt.getMonth()+1}/${dt.getDate()}`;
 
 // 分配：相手は比率で切り捨て、残りは自分の分
+const sharesOf = t => t.shares || shares(t.amt);
 function shares(amt){
   const r = {};
   people.filter(p=>!p.self).forEach(p=>r[p.id]=floor2(amt*p.ratio));
@@ -281,14 +275,16 @@ function shares(amt){
   r[self.id] = floor2(amt - Object.values(r).reduce((a,b)=>a+b,0));
   return r;
 }
-// 支払日のレート（10時より前は前の日）
+// 支払日のレート（10時より前は前の日）。full は DAY_RATE の鍵（2026/10/23）
 function rateFor(d){
   const dt = toDate(d);
   if(dt.getHours() < 10) dt.setDate(dt.getDate()-1);
-  const key = `${dt.getFullYear()}/${dt.getMonth()+1}/${dt.getDate()}`;
-  return {key: shortD(dt), rate: DAY_RATE[key]};
+  const full = `${dt.getFullYear()}/${dt.getMonth()+1}/${dt.getDate()}`;
+  return {key: shortD(dt), rate: DAY_RATE[full], full};
 }
-const usdtOf = t => t.kind==='payThird' ? floor2(t.yen / rateFor(t.d).rate) : t.amt;
+// 支払いのレート：データにあればそれ（入れたときのもの）、なければ支払日から
+const rateOf = t => t.rate ? {key: shortD(toDate(t.rateDate.replace(/-/g,'/'))), rate: t.rate} : rateFor(t.d);
+const usdtOf = t => t.kind==='payThird' ? (t.usdt ?? floor2(t.yen / rateOf(t).rate)) : t.amt;
 const sorted = () => txs.slice().sort((a,b)=>toDate(a.d)-toDate(b.d));
 
 // 未受領＝分配 − ウォレットへ送った − 相対で支払った
@@ -298,7 +294,7 @@ const blank = () => ({alloc:0,give:0,usedHere:0,usedWallet:0,usedSelf:0});
 function apply(per, t){
   if(t.consent==='cancel') return;
   const a = usdtOf(t);
-  if(t.kind==='recv'){ const s=shares(a); people.forEach(p=>per[p.id].alloc+=s[p.id]); }
+  if(t.kind==='recv'){ const s=sharesOf(t); people.forEach(p=>per[p.id].alloc+=s[p.id]||0); }
   if(t.kind==='give') per[t.who].give+=a;
   if(t.kind==='payThird') per[t.who].usedHere+=a;
   if(t.kind==='out' && t.cls==='self') per[people.find(p=>p.self).id].usedSelf+=a;
@@ -333,6 +329,7 @@ function calc(){
 // 次回分配予定：最後の分配から3か月後
 function nextDist(){
   const last = sorted().filter(t=>t.kind==='recv').pop();
+  if(!last) return '';
   const n = toDate(last.d); n.setMonth(n.getMonth()+DIST_MONTHS); n.setHours(0,0,0,0);
   const days = Math.round((n - TODAY)/86400000);
   return `<div class="next"><span class="label">次回分配予定</span><span class="d">${shortD(n)}</span><span class="y">${n.getFullYear()}年・あと${days}日</span></div>`;
@@ -358,7 +355,7 @@ function detail(x, ratioLabel){
       <div><span class="label">未受領</span><b class="amt-in">${fu(x.unrec)}</b></div>
     </div>`;
 }
-const rateLine = () => `<div class="rate">1 USDT ＝ ${fp(RATE)} 円（${RATE_AT}）</div>`;
+const rateLine = () => `<div class="rate">${RATE ? `1 USDT ＝ ${fp(RATE)} 円（${RATE_AT}）` : 'レートを取得できていません（つながったら取り直します）'}</div>`;
 
 /* ---------- グラフ ---------- */
 const CW = 448, CH = 200, PL = 40, PR = 8, PT = 10, PB = 24;
@@ -372,7 +369,8 @@ function yAxis(max){
 function distChart(ids){
   if(hide) return '<div class="s center" style="padding:24px 0">目のマークで隠しています</div>';
   const ds = sorted().filter(t=>t.kind==='recv');
-  const vals = ds.map(t=>{ const s=shares(t.amt); return ids.map(id=>s[id]); });
+  if(!ds.length) return '<div class="s center" style="padding:24px 0">分配はまだありません</div>';
+  const vals = ds.map(t=>{ const s=sharesOf(t); return ids.map(id=>s[id]||0); });
   const max = niceMax(Math.max(...vals.map(v=>v.reduce((a,b)=>a+b,0))));
   const slot = (CW-PL-PR)/ds.length, bw = Math.min(36, slot*0.5), sy = v => (CH-PT-PB)*v/max;
   let h = yAxis(max);
@@ -402,6 +400,7 @@ function balChart(ids, metric){
   const per = {}; people.forEach(p=>per[p.id]=blank());
   const pts = [];
   sorted().filter(t=>metric!=='held'||sOf(t)).forEach(t=>{ apply(per,t); pts.push({dt:toDate(t.d), v:ids.map(id=>finish(per[id])[metric||'bal']), t}); });
+  if(!pts.length) return '<div class="s center" style="padding:24px 0">まだありません</div>';
   pts.push({dt:TODAY, v:pts[pts.length-1].v, t:null});
   const t0 = new Date(pts[0].dt.getFullYear(),0,1), t1 = TODAY;
   const max = niceMax(Math.max(...pts.flatMap(p=>p.v)));
@@ -467,13 +466,13 @@ function consentTag(t){
 }
 function srcTag(t){ return t.kind==='payThird' ? '<span class="tag">手入力</span>' : ''; }
 function payLine(t){
-  const r = rateFor(t.d);
+  const r = rateOf(t);
   return `${fy(t.yen)}（${r.key} のレート 1 USDT ＝ ${fp(r.rate)} 円）`;
 }
 function txRow(t, forWho, actions){
   let title = KIND[t.kind], sub = showD(t.d), amt, cls;
   if(t.kind==='recv'){
-    const s = shares(t.amt);
+    const s = sharesOf(t);
     if(!forWho) sub += '　' + people.map(p=>p.name+' '+fu(s[p.id])).join('・');
     amt='+'+fu(forWho ? s[forWho] : t.amt); cls='amt-in';
   } else if(t.kind==='give'){
@@ -501,18 +500,18 @@ function txRow(t, forWho, actions){
   }
   let btn = '';
   if(actions==='you' && t.kind==='wout')
-    btn = `<div><button class="mini ${t.cls==='spend'?'go':''}" onclick="sortWout(${t.id},'spend')">支出にする</button> <button class="mini ${t.cls==='other'?'go':''}" onclick="sortWout(${t.id},'other')">対象外にする</button></div>`;
+    btn = `<div><button class="mini ${t.cls==='spend'?'go':''}" onclick="sortWout('${t.id}','spend')">支出にする</button> <button class="mini ${t.cls==='other'?'go':''}" onclick="sortWout('${t.id}','other')">対象外にする</button></div>`;
   if(actions==='me' && (t.consent==='wait'||t.consent==='no'))
-    btn = `<div><button class="mini" onclick="cancelTx(${t.id})">取り消す</button></div>`;
+    btn = `<div><button class="mini" onclick="cancelTx('${t.id}')">取り消す</button></div>`;
   if(actions==='you' && t.consent==='no')
-    btn = `<div><button class="mini go" onclick="agreeOpen(${t.id})">あとから合意する</button></div>`;
+    btn = `<div><button class="mini go" onclick="agreeOpen('${t.id}')">あとから合意する</button></div>`;
   if(actions==='you' && t.consent==='wait')
-    btn = `<div><button class="mini go" onclick="agreeOpen(${t.id})">確かめる</button></div>`;
+    btn = `<div><button class="mini go" onclick="agreeOpen('${t.id}')">確かめる</button></div>`;
   return `<div class="row ${t.consent==='cancel'?'cancel':''}"><div><div class="l">${title}${srcTag(t)}${consentTag(t)}</div><div class="s">${sub}</div>${btn}</div><div class="a ${cls}">${amt}</div></div>`;
 }
 
 function fakeQR(seed){
-  const n=25, s=7.2; let r=seed*9301+49297, out='';
+  const n=25, s=7.2; let r=[...String(seed)].reduce((a,c)=>(a*31+c.charCodeAt(0))%233280,7), out='';
   const rnd=()=>{ r=(r*9301+49297)%233280; return r/233280; };
   const finder=(x,y)=>`<rect x="${x*s}" y="${y*s}" width="${7*s}" height="${7*s}" fill="#000"/><rect x="${(x+1)*s}" y="${(y+1)*s}" width="${5*s}" height="${5*s}" fill="#fff"/><rect x="${(x+2)*s}" y="${(y+2)*s}" width="${3*s}" height="${3*s}" fill="#000"/>`;
   for(let y=0;y<n;y++) for(let x=0;x<n;x++){
@@ -523,29 +522,30 @@ function fakeQR(seed){
 }
 
 /* ---------- 自分用 ---------- */
-const ALL = people.map(p=>p.id);
+const ALL = () => people.map(p=>p.id);
 const sOf = t => t.kind!=='wout'; // 自分用には相手のウォレットのその後を出さない
-// プラットフォーム収益（推定）
-// 会社収益＝自分の分配金（最新の分配を分配の日のレートで円に直す）×5000×4、取引高＝会社収益×200
+// プラットフォーム収益（推定）：データに入っている計算済みの値（会社収益＝万円、取引高＝億円）。会社・○○は画像があれば画像
 function platform(){
-  const last = sorted().filter(t=>t.kind==='recv').pop();
-  const mine = shares(last.amt)[people.find(p=>p.self).id];
-  const company = mine * rateFor(last.d).rate * 5000 * 4, volume = company * 200;
+  const p = DATA.platform;
+  if(!p) return '';
+  const im = DATA.images || {};
+  const pic = (src, alt) => src ? `<img class="pf-img" src="${src}" alt="${alt}">` : alt;
   return `<details class="sec" open><summary>プラットフォーム収益</summary><div class="plain">
-    <div class="row"><div><div class="l">会社収益</div></div>
-      <div class="a one"><span class="rate">推定</span> <b>${f1(company / 1e4)}</b> 万円<span class="rate">／年間</span></div></div>
-    <div class="row"><div><div class="l">○○の取引高</div></div>
-      <div class="a one"><span class="rate">推定</span> <b>${f1(volume / 1e8)}</b> 億円<span class="rate">／年間</span></div></div>
+    <div class="row"><div><div class="l">${pic(im.company,'会社')}収益</div></div>
+      <div class="a one"><span class="rate">推定</span> <b>${f1(p.company)}</b> 万円<span class="rate">／年間</span></div></div>
+    <div class="row"><div><div class="l">${pic(im.volume,'○○')}の取引高</div></div>
+      <div class="a one"><span class="rate">推定</span> <b>${f1(p.volume)}</b> 億円<span class="rate">／年間</span></div></div>
   </div></details>`;
 }
 function meBal(){
-  const {per, addr, third} = calc();
+  const {per, third} = calc();
+  const addr = DATA.walletBalance.amount;
   const tot = blank(); people.forEach(p=>{ for(const k in tot) tot[k]+=per[p.id][k]; }); finish(tot);
   const wait = txs.filter(t=>t.consent==='wait').length, no = txs.filter(t=>t.consent==='no').length;
   const hand = addr + third, ok = hand + 1e-9 >= tot.held;
   const r = tot.held ? hand/tot.held : 9, mk = MARKS.find(m=>r+1e-9>=m[0]);
   const unsorted = txs.filter(t=>t.kind==='out'&&!t.cls).length;
-  let h = `<div class="card"><div class="head"><div style="display:flex;align-items:center;gap:8px"><div style="flex:1"><div class="label">ウォレット残高</div>
+  let h = `<div class="card"><div class="head"><div style="display:flex;align-items:center;gap:8px"><div style="flex:1"><div class="label">ウォレット残高<span class="rate">（${showD(DATA.walletBalance.at.replace(/-/g,'/'))} 時点）</span></div>
     <div class="hero-row"><div class="big hero">${f2(addr)}<span class="unit">USDT</span></div>${eyeBtn()}</div>
     <div class="yen">${yen(addr)}</div></div><span class="mark" style="color:${mk[2]}" title="${mk[3]}">${mk[1]}</span></div>${nextDist()}</div>${rateLine()}
     <details class="fold"><summary>内訳（手元の合計・未払い・合意待ち）</summary>
@@ -572,8 +572,8 @@ function meBal(){
   });
   h += `</details>`;
   h += `<details class="sec"><summary>実績と推移</summary>
-    <div class="card"><div class="label" style="margin-bottom:6px">分配の実績</div>${distChart(ALL)}</div>
-    <div class="card"><div class="label" style="margin-bottom:6px">預り金の推移</div>${balChart(ALL,'held')}</div></details>`;
+    <div class="card"><div class="label" style="margin-bottom:6px">分配の実績</div>${distChart(ALL())}</div>
+    <div class="card"><div class="label" style="margin-bottom:6px">預り金の推移</div>${balChart(ALL(),'held')}</div></details>`;
   return h;
 }
 
@@ -611,7 +611,12 @@ function meTx(){
   h += `<div class="rate" style="margin:6px 0 12px">新しい順に ${Math.min(shown,list.length)} / ${list.length}件</div>`;
   return h + `<div class="note">金額が違っていたら［取り消す］で取り消し、「支払い」タブで入れ直します。合意済みは取り消せません。</div>`;
 }
-function sortWout(id, c){ txs.find(t=>t.id===id).cls=c; render(); }
+// Agent：ウォレットからの送金の仕分けは、この端末の中だけに覚える（データの ID ごと）
+function sortWout(id, c){
+  const t = txs.find(t=>t.id===id); t.cls = c;
+  const m = loadJson('dist-manager-sort') || {}; m[t.srcId] = c; saveJson('dist-manager-sort', m);
+  render(true);
+}
 function cancelTx(id){
   const t = txs.find(t=>t.id===id);
   if(!confirm('この支出を取り消しますか？（履歴には「取り消し」として残ります）')) return;
@@ -624,10 +629,10 @@ function mePay(){
   let h = `<ol class="steps">${steps.map((x,i)=>`<li class="${i===s?'now':''}">${x}</li>`).join('')}</ol>`;
   if(s===0){
     h += `<div class="card"><div class="label">相対での支払い</div>
-      <label class="f">支払先</label><select id="pWho" onchange="payCalc()">${people.filter(p=>!p.self).map(p=>`<option value="${p.id}" ${p.id==='B'?'selected':''}>${p.name}</option>`).join('')}</select>
-      <label class="f">金額（円）</label><input id="pYen" inputmode="numeric" value="2000" oninput="payCalc()">
-      <label class="f">支払日時</label><div class="two"><input id="pDate" type="date" value="2026-10-23" min="2026-10-21" max="2026-10-23" oninput="payCalc()"><input id="pTime" type="time" value="15:30" oninput="payCalc()"></div>
-      <label class="f">内容</label><input id="pMemo" value="お茶代">
+      <label class="f">支払先</label><select id="pWho" onchange="payCalc()">${people.filter(p=>!p.self).map(p=>`<option value="${p.id}" >${p.name}</option>`).join('')}</select>
+      <label class="f">金額（円）</label><input id="pYen" inputmode="numeric" value="" placeholder="例：3000" oninput="payCalc()">
+      <label class="f">支払日時</label><div class="two"><input id="pDate" type="date" value="${isoDay(new Date())}" max="${isoDay(new Date())}" oninput="payCalc()"><input id="pTime" type="time" value="${pad2(new Date().getHours())}:${pad2(new Date().getMinutes())}" oninput="payCalc()"></div>
+      <label class="f">内容</label><input id="pMemo" value="" placeholder="例：食事">
       <div class="calc" id="pCalc"></div>
       <button class="btn" id="pGo" onclick="payNext()">入れる</button></div>`;
   } else if(s===1){
@@ -649,7 +654,7 @@ function mePay(){
       <button class="btn sub" onclick="payFlow={step:0,tx:null};render()">続けて入れる</button></div>`;
   }
   h += `<div class="card"><div class="label">エクセルへの反映</div>
-    <div class="s">ここで入れた支払い・合意コード・取り消しは、PC でファイルに書き出してエクセルに取り込みます（未反映 ${txs.filter(t=>t.id>=100).length}件）</div>
+    <div class="s">ここで入れた支払い・合意コード・取り消しは、PC でファイルに書き出してエクセルに取り込みます（未反映 ${txs.filter(t=>String(t.id).startsWith('n:')).length}件）</div>
     <button class="btn sub">エクセル用に書き出す（見本では動きません）</button></div>`;
   return h;
 }
@@ -661,7 +666,7 @@ function payForm(){
 }
 function payCalc(){
   const f = payForm(), r = rateFor(f.d), box = document.getElementById('pCalc');
-  if(!r.rate){ box.innerHTML='この日のレートは見本にありません（10/21〜10/23 で試してください）'; return; }
+  if(!r.rate){ box.innerHTML='支払日のレートを取得中…'; fetchDayRate(r.full).then(ok=>{ if(ok) payCalc(); else box.innerHTML='支払日のレートを取得できませんでした（つながっているか確かめてください）'; }); return; }
   const before10 = toDate(f.d).getHours() < 10;
   box.innerHTML = `支払日のレート：${r.key} 10時　1 USDT ＝ ${fp(r.rate)} 円${before10?'<br><span class="rate">10時より前なので前の日のレート</span>':''}
     <br>${fy(f.yen)} ÷ ${fp(r.rate)} ＝ <b>${f2(floor2(f.yen/r.rate))}</b> USDT <span class="rate">（小数第3位以下は切り捨て）</span>`;
@@ -671,15 +676,14 @@ function payNext(){
   const f = payForm();
   if(!rateFor(f.d).rate || !f.yen) return;
   const self = people.find(p=>p.id===f.who).self;
-  const t = {id:seq++, kind:'payThird', ...f, consent: self?'self':'wait', hist:[]};
+  const t = {id:'n:'+(seq++), kind:'payThird', ...f, consent: self?'self':'wait', hist:[]};
   txs.push(t);
   payFlow = {step: self?3:1, tx:t}; render();
 }
 function payDone(){ payFlow.tx.consent='ok'; payFlow.tx.hist.push(shortD(new Date())+' 合意'); payFlow.step=3; render(); }
 function payLater(){ payFlow={step:0,tx:null}; tab='tx'; filter='wait'; render(); }
 
-/* ---------- 相手用（Bさん） ---------- */
-const ME = 'B';
+/* ---------- 相手用（Agent） ---------- */
 function youBal(){
   const x = calc().per[ME], p = people.find(p=>p.id===ME);
   return `<div class="card"><div class="head"><div><div class="label">${p.name}の残高（ウォレット＋未受領）</div>
@@ -701,7 +705,7 @@ function youTx(){
 }
 function youAgree(){
   const s = agreeFlow.step;
-  let h = `<div class="card"><div class="key">登録された鍵＝この端末の鍵 ✓</div><div class="rate">鍵の指紋 3F9A-27C1-B804（自分の画面の表示と同じか確かめられます）</div></div>`;
+  let h = `${DATA.person.fingerprint ? `<div class="card"><div class="key">登録された鍵の指紋 ${DATA.person.fingerprint}</div><div class="rate">この端末の鍵との照合は、合意コードの機能を入れるときに足します</div></div>` : `<div class="card"><div class="rate">鍵はまだ登録されていません</div></div>`}`;
   if(s===0){
     const waits = txs.filter(t=>t.who===ME && t.consent==='wait');
     const nos = txs.filter(t=>t.who===ME && t.consent==='no');
@@ -712,7 +716,7 @@ function youAgree(){
       <button class="btn" onclick="agreeRead()" ${waits.length?'':'disabled'}>読み取った（見本）</button>
       <button class="btn sub">LINE で届いた文字を貼る</button></div>`;
   } else if(s===1){
-    const t = agreeFlow.tx, r = rateFor(t.d);
+    const t = agreeFlow.tx, r = rateOf(t);
     h += `<div class="card"><div class="label">この支出を確かめてください</div>
       <div class="big amt-out" style="font-size:28px">${fy(t.yen)}</div>
       <div class="s" style="margin-top:4px">${showD(t.d)}　${t.memo}　相対で支払い</div>
@@ -738,6 +742,163 @@ function agreeOpen(id){ tab='agree'; agreeFlow={step:1, tx:txs.find(t=>t.id===id
 function agreeRead(){ const t = txs.filter(t=>t.who===ME && t.consent==='wait').pop(); agreeFlow={step:1, tx:t}; render(); }
 function agreeDo(v){ const t=agreeFlow.tx; t.consent=v; t.hist.push(shortD(new Date())+' '+(v==='ok'?'合意':'合意しない')); agreeFlow.step=2; render(); }
 
+/* ---------- 設定（データの読み込み） ---------- */
+const SCOPE = mode==='me' ? 'manager' : 'agent';
+const SCOPE_LABEL = {manager:'Manager 用', agent:'Agent 用'};
+function setView(){
+  let h = `<h2>データ</h2><div class="card">`;
+  if(DATA){
+    h += `<div class="kv">
+      <span class="kk">種類</span><span>${SCOPE_LABEL[DATA.scope]}${DATA.scope==='agent' ? '（' + DATA.person.name + '）' : ''}${DATA.trial ? '　<span class="tag wait">試行データ</span>' : ''}</span>
+      <span class="kk">作成</span><span>${DATA.generatedAt}</span>
+      <span class="kk">ファイル</span><span style="word-break:break-all">${META.fileName}</span>
+      <span class="kk">読み込み</span><span>${META.importedAt}</span></div>`;
+  } else h += `<div class="s">まだデータを読み込んでいません。</div>`;
+  h += `<label class="btn" for="fileIn" style="text-align:center">ファイルを読み込む</label>
+    <input type="file" id="fileIn" accept=".json,application/json" hidden onchange="importFile(this)">
+    <div class="rate" style="margin-top:6px">ブックで作った ${SCOPE_LABEL[SCOPE]}のデータファイル（${SCOPE==='manager' ? 'dist-manager_…' : 'dist-agent-…'}.json）を選びます</div></div>`;
+  h += `<h2>この端末</h2><div class="card">
+    <button class="btn sub" onclick="forgetPass()" ${localStorage.getItem('dist-manager-pass') ? '' : 'disabled'}>覚えた合言葉を消す</button>
+    <button class="btn ng" onclick="clearData()" ${DATA ? '' : 'disabled'}>データを消す</button></div>`;
+  h += `<h2>アプリ</h2><div class="card"><div class="kv"><span class="kk">版</span><span>0.2.0</span></div></div>`;
+  return h;
+}
+function noData(){
+  return `<div class="card center"><div class="s" style="margin:8px 0 4px">データがありません。</div>
+    <button class="btn" onclick="tab='set';render()">設定タブで読み込む</button></div>`;
+}
+// ファイルを読む → 暗号化されていれば合言葉で解く → 形を確かめる → 端末に保存して出す
+async function importFile(input){
+  const file = input.files && input.files[0];
+  input.value = '';
+  if(!file) return;
+  try {
+    let json;
+    try { json = JSON.parse(await file.text()); } catch(e){ throw new Error('データファイルではありません（中身が読めません）'); }
+    const d = await decryptIfNeeded(json);
+    if(!d) return;   // 合言葉の入力をやめた
+    validate(d);
+    const meta = {fileName: file.name, importedAt: nowText()};
+    if(!saveJson('dist-manager-data', {data: d, meta})) throw new Error('端末に保存できませんでした（空き容量を確かめてください）');
+    useData(d, meta);
+    tab = 'bal'; render();
+    alert('読み込みました（作成 ' + d.generatedAt + '）');
+  } catch(e){ alert(e.message); }
+}
+function validate(d){
+  if(!d || d.format !== 'dist-data' || !d.generatedAt) throw new Error('DISTRIBUTION のデータファイルではありません');
+  if(d.version > DATA_VERSION_MAX) throw new Error('このデータは新しい版のアプリ用です。アプリを開き直して更新してから、もう一度読み込んでください');
+  if(d.scope !== SCOPE) throw new Error('このファイルは ' + SCOPE_LABEL[d.scope] + 'です。' + SCOPE_LABEL[SCOPE] + 'のファイルを選んでください');
+  if(!Array.isArray(d.distributions) || !Array.isArray(d.transfers) || !Array.isArray(d.payments)) throw new Error('データファイルの形が違います');
+}
+// 暗号の解き方は ESV と同じ（PBKDF2-SHA256 → AES-256-GCM）。覚えた合言葉を先に試し、だめなら聞く。やめたら null
+const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+async function decryptData(enc, pass){
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass.normalize('NFC')), 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey({name:'PBKDF2', hash:enc.kdf.hash, salt:b64(enc.kdf.salt), iterations:enc.kdf.iterations}, base, {name:'AES-GCM', length:256}, false, ['decrypt']);
+  return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM', iv:b64(enc.cipher.iv)}, key, b64(enc.data))));
+}
+async function decryptIfNeeded(json){
+  if(json.format !== 'dist-data-enc') return json;
+  if(json.version > ENC_VERSION_MAX) throw new Error('このデータは新しい版のアプリ用です。アプリを開き直して更新してから、もう一度読み込んでください');
+  const saved = localStorage.getItem('dist-manager-pass');
+  if(saved){ try { return await decryptData(json, saved); } catch(e){ /* 合言葉が変わった → 聞く */ } }
+  let msg = '合言葉を入れてください';
+  for(;;){
+    const a = await askPass(msg);
+    if(!a) return null;
+    try {
+      const d = await decryptData(json, a.pass);
+      try { if(a.save) localStorage.setItem('dist-manager-pass', a.pass); else localStorage.removeItem('dist-manager-pass'); } catch(e){}
+      return d;
+    } catch(e){ msg = '合言葉が違います。もう一度入れてください'; }
+  }
+}
+function askPass(msg){
+  return new Promise(resolve => {
+    const dlg = document.getElementById('passDlg');
+    document.getElementById('passMsg').textContent = msg;
+    document.getElementById('passInput').value = '';
+    dlg.addEventListener('close', () => resolve(dlg.returnValue === 'ok' && document.getElementById('passInput').value ? {pass: document.getElementById('passInput').value, save: document.getElementById('passSave').checked} : null), {once:true});
+    dlg.showModal();
+  });
+}
+function forgetPass(){ try { localStorage.removeItem('dist-manager-pass'); } catch(e){} render(true); alert('覚えた合言葉を消しました'); }
+function clearData(){
+  if(!confirm('この端末のデータを消しますか？（データファイルを読み込めば、また出せます）')) return;
+  try { localStorage.removeItem('dist-manager-data'); } catch(e){}
+  DATA = null; META = null; people = []; SOTAI = []; txs = []; render();
+}
+// データファイルの形 → 画面の作りに合わせた形
+const shortAddr = a => a && a.length > 14 ? a.slice(0,6) + '…' + a.slice(-4) : (a || '');
+const sl = d => String(d).replace(/-/g, '/');   // "2026-01-16 10:00" → "2026/01/16 10:00"
+const EVENT = {no:'合意しない', ok:'合意', cancel:'取り消し'};
+function useData(d, meta){
+  DATA = d; META = meta;
+  if(d.scope === 'manager'){
+    people = d.people.map((p,i)=>({id:p.id, name:p.name, ratio:p.ratio, self:!!p.self, color:COLORS[i % COLORS.length]}));
+    SOTAI = (d.sotai || []).map(x=>({id:x.id, name:x.name, addr:shortAddr(x.addr)}));
+  } else {
+    ME = d.person.id;
+    people = [{id:ME, name:d.person.name, ratio:d.person.ratio, color:COLORS[0]}];
+    SOTAI = [];
+  }
+  const sorts = loadJson('dist-manager-sort') || {};
+  txs = [];
+  d.distributions.forEach(x=>txs.push({id:'d:'+x.id, d:sl(x.date), kind:'recv',
+    amt: d.scope==='manager' ? x.amount : x.share, shares: d.scope==='manager' ? x.shares : {[ME]: x.share}}));
+  d.transfers.forEach(x=>{
+    const t = {id:'t:'+x.id, d:sl(x.date), amt:x.amount};
+    if(x.kind==='wallet') txs.push({...t, kind:'give', who:x.to, match:!!x.matched});
+    else if(x.kind==='sotai') txs.push({...t, kind:'move', to:x.to});
+    else txs.push({...t, kind:'out', to:shortAddr(x.to), cls:{self:'self', other:'other'}[x.kind] || null});
+  });
+  (d.walletOut || []).forEach(x=>txs.push({id:'w:'+x.id, srcId:x.id, d:sl(x.date), kind:'wout', amt:x.amount, who:ME, to:shortAddr(x.to), cls:sorts[x.id] || null}));
+  d.payments.forEach(x=>txs.push({id:'p:'+x.id, d:sl(x.date), kind:'payThird', yen:x.yen, who:x.who, memo:x.memo, consent:x.status,
+    rate:x.rate, rateDate:x.rateDate, usdt:x.usdt, code:x.code,
+    hist:(x.history || []).map(h=>shortD(toDate(sl(h.date))) + ' ' + EVENT[h.event])}));
+  showNote();
+}
+function showNote(){
+  const el = document.getElementById('note');
+  el.hidden = !DATA;
+  if(DATA) el.textContent = (DATA.trial ? '試行データです（作成 ' + DATA.generatedAt + '）。' : '') + 'QR は絵だけで、読み取りはボタンで代わりにしています。';
+}
+const pad2 = n => String(n).padStart(2, '0');
+const isoDay = d => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
+const nowText = () => { const d = new Date(); return `${isoDay(d)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
+
+/* ---------- レート（CoinGecko） ---------- */
+// 今のレート：前回から1時間たっていたら取り直す
+async function loadRate(){
+  const c = loadJson('dist-manager-rate');
+  if(c){ RATE = c.rate; RATE_AT = c.atText; }
+  if(c && Date.now() - c.at < 3600e3) return;
+  try {
+    const j = await (await fetch('https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=jpy')).json();
+    const r = j && j.tether && j.tether.jpy;
+    if(!r) return;
+    const d = new Date();
+    RATE = Math.round(r * 100) / 100; RATE_AT = `${d.getMonth()+1}/${d.getDate()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+    saveJson('dist-manager-rate', {rate: RATE, atText: RATE_AT, at: Date.now()});
+    if(DATA && tab==='bal') render(true);
+  } catch(e){ /* つながらないときは前回の値のまま */ }
+}
+// 支払日のレート：その日の日本時間10時に一番近い値（前後1時間半の中から）。取れたら端末に覚える
+async function fetchDayRate(full){
+  if(DAY_RATE[full]) return true;
+  const [y,m,d] = full.split('/').map(Number);
+  const t10 = Date.UTC(y, m-1, d, 1, 0) / 1000;   // 日本時間10時＝世界時1時
+  try {
+    const j = await (await fetch(`https://api.coingecko.com/api/v3/coins/tether/market_chart/range?vs_currency=jpy&from=${t10-5400}&to=${t10+5400}`)).json();
+    if(!j || !Array.isArray(j.prices) || !j.prices.length) return false;
+    const best = j.prices.reduce((a,b)=>Math.abs(b[0]-t10*1000) < Math.abs(a[0]-t10*1000) ? b : a);
+    DAY_RATE[full] = Math.round(best[1] * 100) / 100;
+    saveJson('dist-manager-dayrate', DAY_RATE);
+    return true;
+  } catch(e){ return false; }
+}
+
 /* ---------- 共通 ---------- */
 function setMode(m){ mode=m; tab='bal'; filter='all'; shown=10; render(); }
 const ICON = {
@@ -745,16 +906,17 @@ const ICON = {
   tx:'<path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',
   pay:'<circle cx="12" cy="12" r="9"/><path d="M8 7l4 5 4-5M12 12v6M9 13h6M9 16h6"/>',
   agree:'<circle cx="12" cy="12" r="9"/><path d="M8 7l4 5 4-5M12 12v6M9 13h6M9 16h6"/>',
+  set:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
 };
 function render(keepScroll){
   const waitMe = txs.filter(t=>t.who===ME && t.consent==='wait').length;
   const T = mode==='me'
-    ? [['bal','ホーム'],['tx','取引'],['pay','支払い']]
-    : [['bal','ホーム'],['tx','取引'],['agree','受領'+(waitMe?`<span class="badge">${waitMe}</span>`:'')]];
+    ? [['bal','ホーム'],['tx','取引'],['pay','支払い'],['set','設定']]
+    : [['bal','ホーム'],['tx','取引'],['agree','受領'+(waitMe?`<span class="badge">${waitMe}</span>`:'')],['set','設定']];
   document.getElementById('tabs').innerHTML = T.map(([k,l])=>`<div class="${tab===k?'on':''}" onclick="tab='${k}';shown=10;render()"><svg class="tab-ic" viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg><span>${l}</span></div>`).join('');
-  const V = {me:{bal:meBal, tx:meTx, pay:mePay}, you:{bal:youBal, tx:youTx, agree:youAgree}};
-  document.getElementById('view').innerHTML = V[mode][tab]();
-  if(mode==='me' && tab==='pay' && payFlow.step===0) payCalc();
+  const V = {me:{bal:meBal, tx:meTx, pay:mePay, set:setView}, you:{bal:youBal, tx:youTx, agree:youAgree, set:setView}};
+  document.getElementById('view').innerHTML = (DATA || tab==='set') ? V[mode][tab]() : noData();
+  if(DATA && mode==='me' && tab==='pay' && payFlow.step===0) payCalc();
   hookCharts();
   if(!keepScroll) window.scrollTo(0,0);
 }
@@ -825,8 +987,11 @@ function render(keepScroll){
   });
   document.addEventListener('touchcancel', () => { if (armed) slide(page, 0, SLIDE_MS); hideHint(false); armed = false; });
 })();
-if(['#tx','#pay'].includes(location.hash)) tab=location.hash.slice(1);
+if(['#tx','#pay','#agree','#set'].includes(location.hash)) tab=location.hash.slice(1);
+// 端末に保存したデータがあれば、それを出す
+(() => { const v = loadJson('dist-manager-data'); if(v && v.data){ try { useData(v.data, v.meta); } catch(e){ DATA = null; } } })();
 render();
+loadRate();
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script>
 </body>
