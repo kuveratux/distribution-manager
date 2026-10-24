@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0a0805">
 <title>DISTRIBUTION Manager</title>
-<meta name="app-version" content="0.7.5">
+<meta name="app-version" content="0.8.0">
 <meta name="apple-mobile-web-app-title" content="DISTRIBUTION Manager">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -126,6 +126,7 @@
   .chips span{font-size:12px;padding:3px 10px;border-radius:12px;border:1px solid var(--edge);color:var(--muted);cursor:pointer;background:var(--card-2)}
   .chips span.on{border-color:var(--gold-2);color:#1a1204;font-weight:700;background:linear-gradient(180deg,var(--gold-2),var(--accent-2))}
   label.f{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+  textarea{width:100%;padding:9px 10px;border-radius:10px;border:1px solid var(--edge);background:var(--card-2);color:var(--text);font-size:13px;font-family:Consolas,monospace;resize:vertical}
   input,select{width:100%;padding:9px 10px;border-radius:10px;border:1px solid var(--edge);background:var(--card-2);color:var(--text);font-size:15px}
   .two{display:flex;gap:8px} .two>*{flex:1}
   .calc{margin-top:12px;padding:10px;border-radius:10px;background:rgba(0,0,0,.35);border:1px solid var(--line);font-size:13px}
@@ -137,6 +138,7 @@
   .btn:disabled{opacity:.4}
   .qr{display:flex;justify-content:center;margin:12px 0 4px}
   .qr svg{background:#fff;border-radius:8px;padding:8px;width:180px;height:180px;box-shadow:0 0 0 2px var(--gold-3),0 0 18px var(--glow)}
+  .qr.big svg{width:240px;height:240px}  /* 合意のやり取りの QR（文字が長いので大きく） */
   .center{text-align:center}
   .steps{font-size:15px;line-height:1.6;color:var(--muted);margin:0 0 10px;padding-left:22px}  /* 支払いの手順（大きめ） */
   .steps li.now{color:var(--gold-1);font-weight:bold}
@@ -240,7 +242,7 @@
 </head>
 <body>
 <header class="appbar">
-  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver" id="status">Version：0.7.5</span>
+  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver" id="status">Version：0.8.0</span>
 </header>
 <div class="wrap">
   <div class="note update" id="updateNote" hidden>新しいバージョンがあります。<button onclick="location.reload()">更新する</button></div>
@@ -263,6 +265,11 @@
 </dialog>
 <div class="tabs" id="tabs"></div>
 <div id="toast" hidden></div>
+<dialog id="scanDlg" onclose="stopScan()">
+  <div class="label">QR をカメラに向けてください</div>
+  <video id="scanVideo" playsinline muted style="width:100%;max-width:360px;border-radius:10px;background:#000;display:block;margin:8px auto"></video>
+  <button class="btn sub" onclick="stopScan()">やめる</button>
+</dialog>
 <dialog id="nameDlg">
   <div class="label">アドレス</div><div class="code" id="dlgAddr"></div>
   <label class="f">名前（空にすると消します）</label><input id="dlgName" maxlength="30" autocomplete="off">
@@ -304,8 +311,11 @@ let mode = 'me', tab = 'bal', filter = 'all', shown = 10;
 // 残高の状態：手元の合計 ÷ 未払い
 const MARKS = [[1.10,'◎','var(--in)','未払いの110%以上'],[1.00,'〇','var(--in)','100%以上'],[0.95,'△','var(--note-text)','95%以上'],[0,'×','var(--out)','95%未満']];
 let payFlow = {step:0, tx:null};
-let agreeFlow = {step:0, tx:null};
+let agreeFlow = {step:0, pay:null};
 let seq = 100;
+// Agent：出した合意コードの控え（{pay, d, at, code, made}）。端末の中だけ
+let ACKS = [];
+try { ACKS = JSON.parse(localStorage.getItem('dist-manager-acks') || '[]'); } catch(e){}
 
 const KIND = {recv:'分配', give:'ウォレットへ', move:'相対へ移した', payThird:'相対で支払い', out:'対象外', wout:'ウォレットから送金'};
 function loadJson(k){ try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch(e){ return null; } }
@@ -569,23 +579,80 @@ function txRow(t, forWho, actions){
   if(actions==='you' && t.kind==='wout')
     btn = `<div><button class="mini ${t.cls==='spend'?'go':''}" onclick="sortWout('${t.id}','spend')">支出にする</button> <button class="mini ${t.cls==='other'?'go':''}" onclick="sortWout('${t.id}','other')">対象外にする</button></div>`;
   if(actions==='me' && (t.consent==='wait'||t.consent==='no'))
-    btn = `<div><button class="mini" onclick="cancelTx('${t.id}')">取り消す</button></div>`;
-  if(actions==='you' && t.consent==='no')
+    btn = `<div><button class="mini go" onclick="payResume('${t.id}',1)">QR を出す</button> <button class="mini go" onclick="payResume('${t.id}',2)">合意コードを読み取る</button> <button class="mini" onclick="cancelTx('${t.id}')">取り消す</button></div>`;
+  if(actions==='you' && t.sent)
+    btn = `<div><span class="tag">合意コードを送った（反映待ち）</span> <button class="mini" onclick="ackShow('${t.id}')">コードをもう一度出す</button></div>`;
+  else if(actions==='you' && t.consent==='no')
     btn = `<div><button class="mini go" onclick="agreeOpen('${t.id}')">あとから合意する</button></div>`;
   if(actions==='you' && t.consent==='wait')
     btn = `<div><button class="mini go" onclick="agreeOpen('${t.id}')">確かめる</button></div>`;
   return `<div class="row ${t.consent==='cancel'?'cancel':''}"><div><div class="l">${title}${srcTag(t)}${consentTag(t)}</div><div class="s">${sub}</div>${btn}</div><div class="a ${cls}">${amt}</div></div>`;
 }
 
-function fakeQR(seed){
-  const n=25, s=7.2; let r=[...String(seed)].reduce((a,c)=>(a*31+c.charCodeAt(0))%233280,7), out='';
-  const rnd=()=>{ r=(r*9301+49297)%233280; return r/233280; };
-  const finder=(x,y)=>`<rect x="${x*s}" y="${y*s}" width="${7*s}" height="${7*s}" fill="#000"/><rect x="${(x+1)*s}" y="${(y+1)*s}" width="${5*s}" height="${5*s}" fill="#fff"/><rect x="${(x+2)*s}" y="${(y+2)*s}" width="${3*s}" height="${3*s}" fill="#000"/>`;
-  for(let y=0;y<n;y++) for(let x=0;x<n;x++){
-    if((x<8&&y<8)||(x>16&&y<8)||(x<8&&y>16)) continue;
-    if(rnd()<0.5) out+=`<rect x="${x*s}" y="${y*s}" width="${s}" height="${s}" fill="#000"/>`;
-  }
-  return `<div class="qr"><svg viewBox="0 0 ${n*s} ${n*s}">${out}${finder(0,0)}${finder(18,0)}${finder(0,18)}</svg></div>`;
+/* ---------- 合意のやり取り（支払いの QR・合意コード） ---------- */
+// 支払いの QR（Manager → Agent）：DIST-PAY1:＋支払いの中身（JSON を base64url）
+// 合意コード（Agent → Manager）：DIST-ACK1:＋{id, d（ok＝合意／no＝合意しない）, at（答えた日）, fp（鍵の指紋）, sig（署名）}
+// 署名するのは「支払いの中身＋答え＋日」を決まった順に並べた文字。Manager は自分の持っている支払いで同じ文字を作って確かめるので、
+// 金額などが1つでも違えば「不一致」になる。どちらもただの文字なので、QR のほか LINE などで送って貼り付けてもよい
+const b64u = u8 => b64e(u8).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const unb64u = t => b64(t.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((t.length + 3) % 4));
+const packCode = (head, obj) => head + ':' + b64u(new TextEncoder().encode(JSON.stringify(obj)));
+function unpackCode(text){
+  const m = String(text || '').replace(/\s+/g, '').match(/(DIST-(?:PAY1|ACK1)):([A-Za-z0-9_-]+)/);
+  if(!m) return null;
+  try { return {head: m[1], v: JSON.parse(new TextDecoder().decode(unb64u(m[2])))}; } catch(e){ return null; }
+}
+const payFields = p => ({id:p.id, date:p.date, who:p.who, memo:p.memo, yen:p.yen, rateDate:p.rateDate, rate:p.rate, usdt:p.usdt});
+const ackMessage = (p, d, at) => new TextEncoder().encode(['DIST-ACK1', p.id, p.date, p.who, p.yen, p.rateDate, p.rate, p.usdt, p.memo, d, at].join('\n'));
+const ECDSA = {name:'ECDSA', hash:'SHA-256'};
+// 端末に持っている支払い（データファイルの形）。Manager はアプリで入れたものも
+const rawPay = pid => (SCOPE === 'manager' && LOCAL.added.find(p => p.id === pid)) || (DATA.payments || []).find(p => p.id === pid);
+// 本物の QR（qrcode.js）
+function codeQR(text){
+  try { const q = qrcode(0, 'M'); q.addData(text); q.make(); return `<div class="qr big">${q.createSvgTag({cellSize: 4, margin: 2, scalable: true})}</div>`; }
+  catch(e){ return `<div class="s">QR を作れませんでした。文字で送ってください</div>`; }
+}
+// 文字で送る：コピーと共有（LINE など）
+async function shareCode(text, title){
+  if(!navigator.share) return copyText(text, '共有できないので、文字をコピーしました');
+  try { await navigator.share({title, text}); } catch(e){}
+}
+const sendBtns = (text, title) => `<div class="two"><button class="btn sub" onclick="copyText(${esc(JSON.stringify(text))}, 'コピーしました')">文字をコピー</button><button class="btn sub" onclick="shareCode(${esc(JSON.stringify(text))}, '${title}')">共有で送る</button></div>`;
+// 読み取りの入口：カメラか、届いた文字を貼る
+const readBox = (fn, ph) => `<button class="btn" onclick="startScan(${fn})">カメラで QR を読み取る</button>
+  <label class="f">LINE などで届いた文字を貼る</label><textarea id="codeIn" rows="3" placeholder="${ph}"></textarea>
+  <button class="btn sub" onclick="${fn}(document.getElementById('codeIn').value)">貼った文字で進む</button>`;
+
+// カメラで QR を読む（jsQR は使うときだけ読み込む）
+let scanStream = null, jsqrP = null;
+const loadJsQR = () => jsqrP || (jsqrP = new Promise((ok, ng) => {
+  if(window.jsQR) return ok();
+  const el = document.createElement('script'); el.src = 'jsqr.js'; el.onload = ok; el.onerror = () => { jsqrP = null; ng(); };
+  document.head.appendChild(el);
+}));
+async function startScan(onText){
+  try { await loadJsQR(); } catch(e){ return toast('読み取りの部品を読み込めませんでした。文字を貼ってください'); }
+  try { scanStream = await navigator.mediaDevices.getUserMedia({video: {facingMode: 'environment'}, audio: false}); }
+  catch(e){ return toast('カメラを使えませんでした（カメラの許可を確かめるか、文字を貼ってください）'); }
+  const v = document.getElementById('scanVideo'), dlg = document.getElementById('scanDlg');
+  v.srcObject = scanStream; dlg.showModal();
+  try { await v.play(); } catch(e){}
+  const c = document.createElement('canvas'), g = c.getContext('2d', {willReadFrequently: true});
+  const tick = () => {
+    if(!scanStream) return;
+    if(v.readyState >= 2 && v.videoWidth){
+      const w = Math.min(640, v.videoWidth), h = Math.round(v.videoHeight * w / v.videoWidth);
+      c.width = w; c.height = h; g.drawImage(v, 0, 0, w, h);
+      const r = jsQR(g.getImageData(0, 0, w, h).data, w, h, {inversionAttempts: 'attemptBoth'});
+      if(r && r.data && unpackCode(r.data)){ stopScan(); onText(r.data); return; }
+    }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+function stopScan(){
+  if(scanStream){ scanStream.getTracks().forEach(t => t.stop()); scanStream = null; }
+  const d = document.getElementById('scanDlg'); if(d.open) d.close();
 }
 
 /* ---------- 自分用 ---------- */
@@ -694,11 +761,13 @@ function cancelTx(id){
   changePayment(id.slice(2), 'cancel'); render(true);
 }
 // 支払いの状態を変えて端末に保存し、画面の取引を作り直す（アプリで入れたものは直接、データのものは changes に）
-function changePayment(pid, status){
+// code：合意コード（合意＝支払いの合意コード、合意しない＝履歴のほうに残す）
+function changePayment(pid, status, code){
   const ev = {date: isoDay(new Date()), event: status};
+  if(code && status === 'no') ev.code = code;
   const own = LOCAL.added.find(p=>p.id===pid);
-  if(own){ own.status = status; own.history.push(ev); }
-  else { const c = LOCAL.changes[pid] || {status, added: []}; c.status = status; c.added.push(ev); LOCAL.changes[pid] = c; }
+  if(own){ own.status = status; own.history.push(ev); if(code && status === 'ok') own.code = code; }
+  else { const c = LOCAL.changes[pid] || {status, added: []}; c.status = status; c.added.push(ev); if(code && status === 'ok') c.code = code; LOCAL.changes[pid] = c; }
   saveLocal();
   useData(DATA, META);
 }
@@ -718,20 +787,27 @@ function mePay(){
       <button class="btn" id="pGo" onclick="payNext()">入れる</button></div>`;
   } else if(s===1){
     const t = payFlow.tx;
-    h += `<div class="card center"><div class="label">${pname(t.who)}に読み取ってもらってください</div>${fakeQR(t.id)}
+    const code = packCode('DIST-PAY1', payFields(rawPay(t.id.slice(2))));
+    h += `<div class="card center"><div class="label">${pname(t.who)}に読み取ってもらってください</div>${codeQR(code)}
       <div class="s">${showD(t.d)}　${pname(t.who)}の分　${t.memo}<br>${payLine(t)} → ${f2(usdtOf(t))} USDT</div>
       <button class="btn" onclick="payFlow.step=2;render()">相手が読み取った → 次へ</button>
-      <button class="btn sub" onclick="payLater()">あとで（LINE で文字を送る）</button></div>`;
+      <label class="f" style="text-align:left">離れているときは、文字を LINE などで送ってください（相手は受領タブで貼り付けます）</label>
+      ${sendBtns(code, 'DISTRIBUTION 支払いの確認')}
+      <button class="btn sub" onclick="payLater()">あとで（合意コードが届いたら、取引タブのこの支払いから読み取る）</button></div>`;
   } else if(s===2){
-    h += `<div class="card center"><div class="label">相手の画面に出た合意コードの QR を読み取ってください</div>
-      <div class="cam">カメラ</div>
-      <button class="btn" onclick="payDone()">読み取った（見本）</button>
-      <button class="btn sub" onclick="payLater()">あとで（LINE で届いた文字を貼る）</button></div>`;
+    const t = payFlow.tx;
+    h += `<div class="card"><div class="label">${pname(t.who)}の画面に出た合意コードを読み取ってください</div>
+      <div class="s">${showD(t.d)}　${t.memo}　${fy(t.yen)} → ${f2(usdtOf(t))} USDT</div>
+      ${readBox('readAck', 'DIST-ACK1:…')}
+      <button class="btn sub" onclick="payFlow.step=1;render()">QR に戻る</button>
+      <button class="btn sub" onclick="payLater()">あとで</button></div>`;
   } else {
     const t = payFlow.tx;
-    h += `<div class="card center"><div class="big ${t.consent==='self'?'':'amt-in'}" style="font-size:24px">${t.consent==='self'?'入れました（自分の分）':'合意済み ✓'}</div>
+    const head = t.consent==='self' ? '入れました（自分の分）' : t.consent==='ok' ? '合意済み ✓' : '合意しない';
+    h += `<div class="card center"><div class="big ${t.consent==='ok'?'amt-in':t.consent==='no'?'amt-out':''}" style="font-size:24px">${head}</div>
       <div class="s">${showD(t.d)}　${pname(t.who)}の分　${t.memo}<br>${payLine(t)} → ${f2(usdtOf(t))} USDT</div>
-      ${t.consent==='self'?'':`<div class="label" style="margin-top:10px">合意コード（${pname(t.who)}の端末の鍵で確認済み）</div><div class="code">MEUCIQDx7Kq2…（見本）…3vZ9Lw==</div>`}
+      ${t.consent==='ok' ? `<div class="label" style="margin-top:10px">合意コード（${pname(t.who)}の登録された鍵で確認済み）</div><div class="code">${t.code}</div>` : ''}
+      ${t.consent==='no' ? `<div class="s" style="margin-top:8px">${pname(t.who)}は合意しませんでした（合意なし）。この支払いも残高から引きます。金額が違っていれば、取り消して入れ直してください</div>` : ''}
       <button class="btn sub" onclick="payFlow={step:0,tx:null};render()">続けて入れる</button></div>`;
   }
   h += `<div class="card"><div class="label">エクセルへの反映</div>
@@ -765,7 +841,34 @@ function payNext(){
   LOCAL.added.push(pay); saveLocal(); useData(DATA, META);
   payFlow = {step: self?3:1, tx: txs.find(t=>t.id==='p:'+pay.id)}; render();
 }
-function payDone(){ const id = payFlow.tx.id; changePayment(id.slice(2), 'ok'); payFlow = {step:3, tx: txs.find(t=>t.id===id)}; render(); }
+// 合意コードを確かめる：支払いの中身・答え・日を並べた文字への署名を、その人の登録された鍵（古い鍵も）で確かめる
+async function readAck(text){
+  const c = unpackCode(text);
+  if(!c) return toast('合意コードが読めません（DIST-ACK1: で始まる文字を、全部貼ってください）');
+  if(c.head !== 'DIST-ACK1') return toast('これは支払いの QR です。相手の画面に出た合意コードを読み取ってください');
+  const v = c.v, p = rawPay(v.id);
+  if(!p) return toast('この端末にない支払いの合意コードです');
+  const tx = txs.find(t => t.id === 'p:' + p.id);
+  if(payFlow.tx && payFlow.tx.id !== tx.id && !confirm(`別の支払い（${showD(tx.d)} ${tx.memo}）の合意コードです。そちらに付けますか？`)) return;
+  const key = (DATA.keys || []).find(k => k.person === p.who && k.fingerprint === v.fp);
+  if(!key) return toast(`${pname(p.who)}の登録された鍵ではありません（鍵の指紋 ${v.fp}）。エクセルの「鍵」を確かめてください`);
+  let ok = false;
+  try {
+    const pub = await crypto.subtle.importKey('spki', b64(key.publicKey), {name:'ECDSA', namedCurve:'P-256'}, false, ['verify']);
+    ok = await crypto.subtle.verify(ECDSA, pub, unb64u(v.sig), ackMessage(p, v.d, v.at));
+  } catch(e){}
+  if(!ok) return toast('不一致：この支払いの中身（金額・日時など）と合いません。相手が見た支払いと同じか確かめてください');
+  // 今の状態は、端末で変えたもの（取り消し・合意）を重ねたほうで見る
+  const now = tx.consent;
+  if(now === 'cancel') return toast('取り消した支払いです');
+  const code = String(text).replace(/\s+/g, '').match(/DIST-ACK1:[A-Za-z0-9_-]+/)[0];
+  if(v.d === 'ok' && now !== 'ok') changePayment(p.id, 'ok', code);
+  else if(v.d === 'no' && now === 'wait') changePayment(p.id, 'no', code);
+  else toast(now === 'ok' ? 'すでに合意済みです' : 'すでに合意なしになっています');
+  tab = 'pay'; payFlow = {step:3, tx: txs.find(t => t.id === 'p:' + p.id)}; render();
+}
+// 取引タブの合意待ち・合意なしから、QR を出し直す・合意コードを読み取る
+function payResume(id, step){ tab = 'pay'; payFlow = {step, tx: txs.find(t => t.id === id)}; render(); }
 function payLater(){ payFlow={step:0,tx:null}; tab='tx'; filter='wait'; render(); }
 
 /* ---------- 相手用（Agent） ---------- */
@@ -788,44 +891,124 @@ function youTx(){
   const list = sorted().filter(t=>t.kind==='recv' || t.who===ME).reverse();
   return `<div class="card">${list.map(t=>txRow(t, ME, 'you')).join('')}</div>`;
 }
+/* ---------- 端末の鍵（Agent。合意コードの署名に使う） ---------- */
+// ECDSA P-256 の鍵の組をこの端末の中で作り、IndexedDB に置く（秘密の鍵は取り出せない形で作る）。公開の鍵だけ「登録用の文字」にして Manager に送り、ブックの「鍵」に貼ってもらう
+// 指紋＝公開の鍵（SPKI）の SHA-256 の頭 6 バイト（XXXX-XXXX-XXXX）。プログラム（dist.js）も同じ計算で確かめる
+let DEVKEY = null;   // {privateKey, spki（base64）, fp, created}。作れなかったときは {error}
+function keyStore(rw, fn){
+  return new Promise((ok, ng) => {
+    const r = indexedDB.open('dist-manager-keys', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('k');
+    r.onerror = () => ng(r.error);
+    r.onsuccess = () => {
+      const tx = r.result.transaction('k', rw), q = fn(tx.objectStore('k'));
+      tx.oncomplete = () => { r.result.close(); ok(q.result); };
+      tx.onerror = () => { r.result.close(); ng(tx.error); };
+    };
+  });
+}
+async function keyFingerprint(spki){
+  const h = new Uint8Array(await crypto.subtle.digest('SHA-256', b64(spki)));
+  return [...h.slice(0, 6)].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase().match(/.{4}/g).join('-');
+}
+// 起動したときに読む。まだなければ作る（Agent を最初に開いたとき）
+async function loadDeviceKey(){
+  if(SCOPE !== 'agent') return;
+  try {
+    let k = await keyStore('readonly', s => s.get('device'));
+    if(!k){
+      const pair = await crypto.subtle.generateKey({name:'ECDSA', namedCurve:'P-256'}, false, ['sign', 'verify']);
+      const spki = b64e(new Uint8Array(await crypto.subtle.exportKey('spki', pair.publicKey)));
+      k = {privateKey: pair.privateKey, spki, fp: await keyFingerprint(spki), created: nowText()};
+      await keyStore('readwrite', s => s.put(k, 'device'));
+    }
+    DEVKEY = k;
+  } catch(e){ DEVKEY = {error: String(e && e.message || e)}; }
+  render(true);
+}
+// 登録用の文字：DIST-KEY1:記号:公開の鍵（記号はデータを読み込む前なら ?）
+const keyRegText = () => `DIST-KEY1:${DATA && DATA.person ? DATA.person.id : '?'}:${DEVKEY.spki}`;
+function keyCard(){
+  if(!DEVKEY) return `<div class="card"><div class="rate">この端末の鍵を用意しています…</div></div>`;
+  if(DEVKEY.error) return `<div class="card"><div class="label">この端末の鍵</div><div class="s">この端末では鍵を作れませんでした（${DEVKEY.error}）。合意コードを出せません</div></div>`;
+  const reg = DATA.person.fingerprint, same = reg === DEVKEY.fp;
+  const st = !reg ? '<span class="tag wait">未登録</span>' : same ? '<span class="tag ok">登録された鍵＝この端末の鍵 ✓</span>' : '<span class="tag no">登録された鍵と違います</span>';
+  const send = `<div class="code" style="word-break:break-all;font-size:11px">${keyRegText()}</div>
+    <div class="two"><button class="btn sub" onclick="copyText(keyRegText(), '登録用の文字をコピーしました')">文字をコピー</button><button class="btn sub" onclick="shareKey()">共有で送る</button></div>`;
+  const kv = `<div class="kv"><span class="kk">この端末</span><span class="key">${DEVKEY.fp}</span>${reg ? `<span class="kk">登録された鍵</span><span class="key">${reg}</span>` : ''}</div>`;
+  if(same) return `<div class="card"><div class="label">この端末の鍵 ${st}</div>${kv}
+    <details class="fold"><summary>登録用の文字</summary>${send}</details></div>`;
+  return `<div class="card"><div class="label">この端末の鍵 ${st}</div>${kv}
+    <div class="rate" style="margin:8px 0;line-height:1.6">${reg ? '端末を替えたか、鍵を作り直したようです。' : ''}下の「登録用の文字」を Manager に送ってください。エクセルに登録されて、新しいデータを読み込むと「登録された鍵＝この端末の鍵 ✓」になります。それまでは合意コードを出せません</div>${send}</div>`;
+}
+async function shareKey(){
+  const text = keyRegText();
+  if(!navigator.share) return copyText(text, '共有できないので、文字をコピーしました');
+  try { await navigator.share({title:'DISTRIBUTION 鍵の登録', text}); } catch(e){}
+}
+
 function youAgree(){
   const s = agreeFlow.step;
-  let h = `${DATA.person.fingerprint ? `<div class="card"><div class="key">登録された鍵の指紋 ${DATA.person.fingerprint}</div><div class="rate">この端末の鍵との照合は、合意コードの機能を入れるときに足します</div></div>` : `<div class="card"><div class="rate">鍵はまだ登録されていません</div></div>`}`;
+  let h = keyCard();
+  const can = DEVKEY && !DEVKEY.error && DATA.person.fingerprint === DEVKEY.fp;
   if(s===0){
     const waits = txs.filter(t=>t.who===ME && t.consent==='wait');
-    const nos = txs.filter(t=>t.who===ME && t.consent==='no');
+    const nos = txs.filter(t=>t.who===ME && t.consent==='no' && !t.sent);
+    h += `<div class="card"><div class="label">支払いの QR を読み取る</div>
+      <div class="rate" style="margin-top:4px">その場では相手の画面の QR を、離れているときは LINE などで届いた文字を読み込みます</div>
+      ${readBox('readPay', 'DIST-PAY1:…')}</div>`;
     h += `<h2>合意待ち</h2>` + (waits.length ? `<div class="card">${waits.map(t=>txRow(t,ME,'you')).join('')}</div>` : `<div class="card s">ありません</div>`);
     h += `<h2>合意しなかったもの（あとから合意できます）</h2>` + (nos.length ? `<div class="card">${nos.map(t=>txRow(t,ME,'you')).join('')}</div>` : `<div class="card s">ありません</div>`);
-    h += `<div class="card center"><div class="label">その場で支出の QR を見せてもらったとき</div>
-      <div class="cam">カメラ</div>
-      <button class="btn" onclick="agreeRead()" ${waits.length?'':'disabled'}>読み取った（見本）</button>
-      <button class="btn sub">LINE で届いた文字を貼る</button></div>`;
   } else if(s===1){
-    const t = agreeFlow.tx, r = rateOf(t);
+    const p = agreeFlow.pay, t = txs.find(x => x.id === 'p:' + p.id), now = t ? t.consent : 'wait';
+    const known = (DATA.payments || []).find(x => x.id === p.id);
+    const diff = known && JSON.stringify(payFields(known)) !== JSON.stringify(payFields(p));
     h += `<div class="card"><div class="label">この支出を確かめてください</div>
-      <div class="big amt-out" style="font-size:28px">${fy(t.yen)}</div>
-      <div class="s" style="margin-top:4px">${showD(t.d)}　${t.memo}　相対で支払い</div>
-      <div class="calc">支払日のレート：${r.key} 10時　1 USDT ＝ ${fp(r.rate)} 円<br>あなたの残高から引く額：<b>${f2(usdtOf(t))}</b> USDT</div>
-      ${t.hist.length?`<div class="rate" style="margin-top:6px">履歴：${t.hist.join(' → ')}</div>`:''}
-      <button class="btn" onclick="agreeDo('ok')">合意する</button>
-      ${t.consent==='wait'?`<button class="btn ng" onclick="agreeDo('no')">合意しない</button>`:''}
-      <button class="btn sub" onclick="agreeFlow={step:0,tx:null};render()">戻る</button></div>`;
+      <div class="big amt-out" style="font-size:28px">${fy(p.yen)}</div>
+      <div class="s" style="margin-top:4px">${showD(sl(p.date))}　${p.memo}　相対で支払い</div>
+      <div class="calc">支払日のレート：${shortD(toDate(sl(p.rateDate)))} 10時　1 USDT ＝ ${fp(p.rate)} 円<br>あなたの残高から引く額：<b>${f2(p.usdt)}</b> USDT</div>
+      ${diff ? `<div class="s" style="color:var(--out);margin-top:6px">届いているデータの同じ支払いと中身が違います。Manager に確かめてください</div>` : ''}
+      ${t && t.hist.length ? `<div class="rate" style="margin-top:6px">履歴：${t.hist.join(' → ')}</div>` : ''}
+      ${can ? '' : `<div class="s" style="color:var(--out);margin-top:6px">この端末の鍵が登録されていないので、合意コードを出せません（上の「この端末の鍵」を見てください）</div>`}
+      <button class="btn" onclick="agreeDo('ok')" ${can ? '' : 'disabled'}>合意する</button>
+      ${now==='wait' ? `<button class="btn ng" onclick="agreeDo('no')" ${can ? '' : 'disabled'}>合意しない</button>` : ''}
+      <button class="btn sub" onclick="agreeFlow={step:0,pay:null};render()">戻る</button></div>`;
   } else {
-    const t = agreeFlow.tx;
-    h += t.consent==='ok'
-      ? `<div class="card center"><div class="label">この QR を相手に読み取ってもらってください</div>${fakeQR(t.id+7)}
-         <div class="s">合意コード（この端末の鍵で署名。控えはこの端末にも残ります）</div>
-         <button class="btn sub">LINE で送る（文字をコピー）</button>
-         <button class="btn sub" onclick="agreeFlow={step:0,tx:null};render()">終わる</button></div>`
-      : `<div class="card center"><div class="big amt-out" style="font-size:22px">合意しない</div>
-         <div class="s">この支出は「合意なし」として残ります。あとから合意することもできます。</div>
-         <button class="btn sub" onclick="agreeFlow={step:0,tx:null};render()">終わる</button></div>`;
+    const a = agreeFlow.ack;
+    h += `<div class="card center"><div class="big ${a.d==='ok'?'amt-in':'amt-out'}" style="font-size:22px">${a.d==='ok'?'合意しました':'合意しない'}</div>
+      <div class="s">${showD(sl(a.pay.date))}　${a.pay.memo}　${fy(a.pay.yen)} → ${f2(a.pay.usdt)} USDT</div>
+      <div class="label" style="margin-top:10px">この QR を相手に読み取ってもらってください</div>${codeQR(a.code)}
+      <div class="s">合意コード（この端末の鍵で署名。控えはこの端末にも残ります）${a.d==='no' ? '<br>「合意しない」も相手に伝えます。あとから合意することもできます' : ''}</div>
+      <label class="f" style="text-align:left">離れているときは、文字を LINE などで送ってください</label>
+      ${sendBtns(a.code, 'DISTRIBUTION 合意コード')}
+      <button class="btn sub" onclick="agreeFlow={step:0,pay:null};render()">終わる</button></div>`;
   }
   return h;
 }
-function agreeOpen(id){ tab='agree'; agreeFlow={step:1, tx:txs.find(t=>t.id===id)}; render(); }
-function agreeRead(){ const t = txs.filter(t=>t.who===ME && t.consent==='wait').pop(); agreeFlow={step:1, tx:t}; render(); }
-function agreeDo(v){ const t=agreeFlow.tx; t.consent=v; t.hist.push(shortD(new Date())+' '+(v==='ok'?'合意':'合意しない')); agreeFlow.step=2; render(); }
+function agreeOpen(id){ const p = rawPay(id.slice(2)); if(!p) return; tab='agree'; agreeFlow={step:1, pay:payFields(p)}; render(); }
+// 支払いの QR（または届いた文字）を読み込む
+function readPay(text){
+  const c = unpackCode(text);
+  if(!c) return toast('支払いの QR・文字が読めません（DIST-PAY1: で始まる文字を、全部貼ってください）');
+  if(c.head !== 'DIST-PAY1') return toast('これは合意コードです。Manager に読み取ってもらうものです');
+  const p = payFields(c.v);
+  if(p.who !== ME) return toast('あなた宛ての支払いではありません');
+  tab = 'agree'; agreeFlow = {step:1, pay:p}; render();
+}
+// 答えに署名して合意コードを作り、控えを残す
+async function agreeDo(d){
+  const p = agreeFlow.pay, at = isoDay(new Date());
+  let sig;
+  try { sig = new Uint8Array(await crypto.subtle.sign(ECDSA, DEVKEY.privateKey, ackMessage(p, d, at))); }
+  catch(e){ return toast('署名できませんでした（' + (e && e.message || e) + '）'); }
+  const code = packCode('DIST-ACK1', {id: p.id, d, at, fp: DEVKEY.fp, sig: b64u(sig)});
+  const a = {pay: p, d, at, code, made: nowText()};
+  ACKS.push(a); saveJson('dist-manager-acks', ACKS);
+  useData(DATA, META);
+  agreeFlow = {step:2, pay:p, ack:a}; render();
+}
+// 出した合意コードをもう一度出す（控えから）
+function ackShow(id){ const a = ACKS.filter(x => 'p:' + x.pay.id === id).pop(); if(!a) return; tab='agree'; agreeFlow={step:2, pay:a.pay, ack:a}; render(); }
 
 /* ---------- 設定（データの読み込み） ---------- */
 const SCOPE = mode==='me' ? 'manager' : 'agent';
@@ -873,7 +1056,7 @@ function setView(){
   h += `<div class="card"><h2>この端末</h2>
     <button class="btn sub" onclick="forgetPass()" ${localStorage.getItem('dist-manager-pass') ? '' : 'disabled'}>覚えた合言葉を消す</button>
     <button class="btn ng" onclick="clearData()" ${DATA ? '' : 'disabled'}>データを消す</button></div>`;
-  h += `<div class="card"><h2>このアプリについて</h2><div>バージョン：<b>0.7.5</b></div>
+  h += `<div class="card"><h2>このアプリについて</h2><div>バージョン：<b>0.8.0</b></div>
     <button class="btn sub" onclick="checkUpdate(this)">更新を確認</button></div>`;
   return h;
 }
@@ -1174,7 +1357,7 @@ async function restoreFromDrive(){
 async function newerVersion(){
   const html = await (await fetch('./?t=' + Date.now(), {cache: 'no-store'})).text();
   const latest = (html.match(/name="app-version" content="([^"]+)"/) || [])[1];
-  return latest && latest !== '0.7.5' ? latest : null;
+  return latest && latest !== '0.8.0' ? latest : null;
 }
 // 新しい版の Service Worker に入れ替わるまで待つ（最大 ms）。入れ替わったら true
 function waitForNewWorker(reg, ms){
@@ -1213,7 +1396,7 @@ async function checkUpdate(btn){
   try {
     const latest = await newerVersion();
     if(latest){ if(confirm('新しいバージョン（' + latest + '）があります。更新しますか？')) await applyUpdate(); }
-    else alert('最新のバージョンです（0.7.5）');
+    else alert('最新のバージョンです（0.8.0）');
   } catch(e){ alert('更新を確認できませんでした（通信を確認してください）'); }
   finally { btn.disabled = false; }
 }
@@ -1231,13 +1414,20 @@ const sl = d => String(d).replace(/-/g, '/');   // "2026-01-16 10:00" → "2026/
 const EVENT = {no:'合意しない', ok:'合意', cancel:'取り消し'};
 // データの支払い＋アプリで入れた支払い（取り込み済みのものは外す）に、変更（取り消し・合意）を当てる
 function payments(d){
-  if(d.scope !== 'manager') return d.payments;
+  if(d.scope !== 'manager'){
+    // 合意コードを出したのに、届いたデータがまだ合意待ち（または合意なし）なら、控えの答えで出す（エクセルに取り込まれるまで）
+    return d.payments.map(p => {
+      const a = ACKS.filter(x => x.pay.id === p.id).pop();
+      if(!a || p.status === 'ok' || p.status === 'cancel' || (p.status === 'no' && a.d === 'no')) return p;
+      return {...p, status: a.d, sent: true, history: (p.history || []).concat([{date: a.at, event: a.d}])};
+    });
+  }
   const byId = new Map(d.payments.map(p=>[p.id, p]));
   const before = JSON.stringify(LOCAL);
   LOCAL.added = LOCAL.added.filter(p=>!byId.has(p.id));
   for(const id of Object.keys(LOCAL.changes)){ const p = byId.get(id); if(!p || p.status === LOCAL.changes[id].status) delete LOCAL.changes[id]; }
   if(JSON.stringify(LOCAL) !== before) saveJson('dist-manager-local', LOCAL);
-  return d.payments.map(p=>{ const c = LOCAL.changes[p.id]; return c ? {...p, status: c.status, history: (p.history || []).concat(c.added)} : p; })
+  return d.payments.map(p=>{ const c = LOCAL.changes[p.id]; return c ? {...p, status: c.status, code: c.code || p.code, history: (p.history || []).concat(c.added)} : p; })
     .concat(LOCAL.added);
 }
 function useData(d, meta){
@@ -1264,7 +1454,7 @@ function useData(d, meta){
   });
   (d.walletOut || []).forEach(x=>txs.push({id:'w:'+x.id, srcId:x.id, d:sl(x.date), kind:'wout', amt:x.amount, who:ME, addr:x.to, cls:sorts[x.id] || null}));
   payments(d).forEach(x=>txs.push({id:'p:'+x.id, d:sl(x.date), kind:'payThird', yen:x.yen, who:x.who, memo:x.memo, consent:x.status,
-    rate:x.rate, rateDate:x.rateDate, usdt:x.usdt, code:x.code,
+    rate:x.rate, rateDate:x.rateDate, usdt:x.usdt, code:x.code, sent:x.sent,
     hist:(x.history || []).map(h=>shortD(toDate(sl(h.date))) + ' ' + EVENT[h.event])}));
   if(BASE){ const lim = sl(BASE) + ' 23:59'; txs = txs.filter(t => t.d <= lim); }
   showNote();
@@ -1276,14 +1466,14 @@ function setBase(v){
 }
 function showStatus(){
   const st = document.getElementById('status');
-  st.textContent = 'Version：0.7.5';
+  st.textContent = 'Version：0.8.0';
   st.title = DATA ? 'データの作成日時：' + DATA.generatedAt : 'データはまだ読み込んでいません';
 }
 function showNote(){
   showStatus();
   const el = document.getElementById('note');
   el.hidden = !DATA;
-  if(DATA) el.textContent = (DATA.trial ? '試行データです（作成 ' + DATA.generatedAt + '）。' : '') + (BASE ? '基準日 ' + sl(BASE) + ' で表示しています。' : '') + 'QR は絵だけで、読み取りはボタンで代わりにしています。';
+  if(DATA) el.textContent = (DATA.trial ? '試行データです（作成 ' + DATA.generatedAt + '）。' : '') + (BASE ? '基準日 ' + sl(BASE) + ' で表示しています。' : '') + '';
 }
 const pad2 = n => String(n).padStart(2, '0');
 const isoDay = d => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
@@ -1670,6 +1860,7 @@ LOCAL = loadJson('dist-manager-local') || {added: [], changes: {}};
 render();
 loadRate();
 startAgentReceive();
+loadDeviceKey();
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('sw.js').catch(()=>{});
   const hadController = !!navigator.serviceWorker.controller;
