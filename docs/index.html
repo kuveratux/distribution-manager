@@ -193,7 +193,7 @@
   /* 設定タブ・合言葉の入力 */
   .kv{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:4px 12px;font-size:13px}
   .kv .kk{color:var(--muted)}
-  .pf-img{height:22px;max-width:140px;object-fit:contain;vertical-align:middle;margin-right:2px}
+  .pf-img{height:26px;max-width:170px;object-fit:contain;vertical-align:middle}  /* 画像があるときは見出しを画像だけにする */
   dialog{background:var(--card);color:var(--text);border:1px solid var(--edge);border-radius:14px;padding:16px;width:min(340px,90vw)}
   dialog::backdrop{background:rgba(0,0,0,.6)}
   dialog input[type=password]{margin-top:8px}
@@ -539,11 +539,11 @@ function platform(){
   const p = DATA.platform;
   if(!p) return '';
   const im = DATA.images || {};
-  const pic = (src, alt) => src ? `<img class="pf-img" src="${src}" alt="${alt}">` : alt;
+  const pic = (src, text) => src ? `<img class="pf-img" src="${src}" alt="${text}">` : text;   // 画像があれば画像だけ、なければ文字
   return `<details class="sec" open><summary>プラットフォーム収益</summary><div class="plain">
-    <div class="row"><div><div class="l">${pic(im.company,'会社')}収益</div></div>
+    <div class="row"><div><div class="l">${pic(im.company,'会社収益')}</div></div>
       <div class="a one"><span class="rate">推定</span> <b>${f1(p.company)}</b> 万円<span class="rate">／年間</span></div></div>
-    <div class="row"><div><div class="l">${pic(im.volume,'○○')}の取引高</div></div>
+    <div class="row"><div><div class="l">${pic(im.volume,'○○の取引高')}</div></div>
       <div class="a one"><span class="rate">推定</span> <b>${f1(p.volume)}</b> 億円<span class="rate">／年間</span></div></div>
   </div></details>`;
 }
@@ -794,7 +794,7 @@ function setView(){
   h += `<h2>この端末</h2><div class="card">
     <button class="btn sub" onclick="forgetPass()" ${localStorage.getItem('dist-manager-pass') ? '' : 'disabled'}>覚えた合言葉を消す</button>
     <button class="btn ng" onclick="clearData()" ${DATA ? '' : 'disabled'}>データを消す</button></div>`;
-  h += `<h2>アプリ</h2><div class="card"><div class="kv"><span class="kk">版</span><span>0.3.0</span></div></div>`;
+  h += `<h2>アプリ</h2><div class="card"><div class="kv"><span class="kk">版</span><span>0.3.1</span></div></div>`;
   return h;
 }
 function noData(){
