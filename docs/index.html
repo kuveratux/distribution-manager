@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0a0805">
 <title>DISTRIBUTION Manager</title>
-<meta name="app-version" content="0.6.0">
+<meta name="app-version" content="0.6.1">
 <meta name="apple-mobile-web-app-title" content="DISTRIBUTION Manager">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -71,7 +71,15 @@
   .grid3{gap:8px 6px}
   .grid3 b{font-size:clamp(11px,3.4vw,16px);white-space:nowrap}  /* 3列の欄は数字と USDT を1行に収める */
   .nw{white-space:nowrap}  /* 数字と USDT の間では折り返さない */
-  .person-head{display:flex;justify-content:space-between;align-items:baseline}
+  .person-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  /* 個人別：名前の行の右に、自分は残高・相手は預り金（一番上のウォレット残高 30px より少し小さい 22px）と円の目安 */
+  .person-head .ph-amt{display:grid;grid-template-columns:auto auto;align-items:baseline;justify-items:end;column-gap:6px;text-align:right}
+  .person-head .ph-l{font-size:11px;color:var(--muted)}
+  .person-head .big.ph{font-size:22px;line-height:1.15}
+  .person-head .big.ph .unit{font-size:11px}
+  .person-head .ph-amt .rate{grid-column:2}
+  .label.hlabel{font-size:14px}
+  .label.hlabel .rate{font-size:12px}
   .person-head .name{font-weight:bold;font-size:16px}
   .person-head .ratio{font-size:12px;color:var(--muted)}
   .sw.gold{background:linear-gradient(135deg,var(--gold-1),var(--gold-2) 45%,var(--gold-3));box-shadow:0 0 6px var(--glow)}
@@ -228,7 +236,7 @@
 </head>
 <body>
 <header class="appbar">
-  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver" id="status">Version：0.6.0</span>
+  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver" id="status">Version：0.6.1</span>
 </header>
 <div class="wrap">
   <div class="note update" id="updateNote" hidden>新しいバージョンがあります。<button onclick="location.reload()">更新する</button></div>
@@ -598,7 +606,7 @@ function meBal(){
   const r = tot.held ? hand/tot.held : 9, mk = MARKS.find(m=>r+1e-9>=m[0]);
   const unsorted = txs.filter(t=>t.kind==='out'&&!t.cls).length;
   let h = (unsorted ? `<div class="notice" onclick="tab='tx';filter='uns';shown=10;render()">未仕分けが <b>${unsorted}件</b> あります<span class="go">取引で見る ›</span></div>` : '')
-    + `<div class="card"><div class="head"><div><div class="label">ウォレット残高<span class="rate">（${BASE ? sl(BASE) : showD(DATA.walletBalance.at.replace(/-/g,'/'))} 時点）</span></div>
+    + `<div class="card"><div class="head"><div><div class="label hlabel">ウォレット残高<span class="rate">（${BASE ? sl(BASE) : showD(DATA.walletBalance.at.replace(/-/g,'/'))} 時点）</span></div>
     <div class="hero-row"><div class="big hero">${f2(addr)}<span class="unit">USDT</span></div>${eyeBtn()}<span class="mark mid" style="color:${mk[2]}" title="${mk[3]}">${mk[1]}</span></div>
     <div class="yen">${yen(addr)}</div></div>${nextDist()}</div>${rateLine()}
     <details class="fold"><summary>判定詳細</summary>
@@ -614,7 +622,8 @@ function meBal(){
     const k3 = p.self ? ['ウォレット', x.usedSelf] : ['ウォレット', x.give];   // 自分は自分のウォレット（アドレス）から使った分
     const hl = p.self ? '残高' : '預り金';   // 自分の分は預かっているお金ではないので「残高」
     const w = v => (x.alloc? Math.max(0,v)/x.alloc*100:0).toFixed(2)+'%';
-    h += `<div class="card"><div class="person-head"><span class="name"><span class="sw gold"></span>${p.name}<span class="ratio" style="margin-left:8px;font-weight:normal">${fp(p.ratio*100)}%</span></span></div>
+    h += `<div class="card"><div class="person-head"><span class="name"><span class="sw gold"></span>${p.name}<span class="ratio" style="margin-left:8px;font-weight:normal">${fp(p.ratio*100)}%</span></span>
+      <span class="ph-amt"><span class="ph-l">${hl}</span><span class="big hero ph">${f2(x.held)}<span class="unit">USDT</span></span><span class="rate">${yen(x.held)}</span></span></div>
       <div class="bar" style="border:1px solid var(--line);height:12px">${segs(x, [['kh',x.held],['ks',x.usedHere],['kw',k3[1]]])}</div>
       <div class="rate barcap"><span>${hl} ${fu(x.held)} / 分配累計 ${fu(x.alloc)}</span>
         <span>（<i class="k kh"></i>${hl}：${pc(x.held,x.alloc)}、<i class="k ks"></i>相対：${pc(x.usedHere,x.alloc)}、<i class="k kw"></i>${k3[0]}：${pc(k3[1],x.alloc)}）</span></div>
@@ -851,7 +860,7 @@ function setView(){
   h += `<div class="card"><h2>この端末</h2>
     <button class="btn sub" onclick="forgetPass()" ${localStorage.getItem('dist-manager-pass') ? '' : 'disabled'}>覚えた合言葉を消す</button>
     <button class="btn ng" onclick="clearData()" ${DATA ? '' : 'disabled'}>データを消す</button></div>`;
-  h += `<div class="card"><h2>このアプリについて</h2><div>バージョン：<b>0.6.0</b></div>
+  h += `<div class="card"><h2>このアプリについて</h2><div>バージョン：<b>0.6.1</b></div>
     <button class="btn sub" onclick="checkUpdate(this)">更新を確認</button></div>`;
   return h;
 }
@@ -1151,7 +1160,7 @@ async function restoreFromDrive(){
 async function newerVersion(){
   const html = await (await fetch('./?t=' + Date.now(), {cache: 'no-store'})).text();
   const latest = (html.match(/name="app-version" content="([^"]+)"/) || [])[1];
-  return latest && latest !== '0.6.0' ? latest : null;
+  return latest && latest !== '0.6.1' ? latest : null;
 }
 // 新しい版の Service Worker に入れ替わるまで待つ（最大 ms）。入れ替わったら true
 function waitForNewWorker(reg, ms){
@@ -1190,7 +1199,7 @@ async function checkUpdate(btn){
   try {
     const latest = await newerVersion();
     if(latest){ if(confirm('新しいバージョン（' + latest + '）があります。更新しますか？')) await applyUpdate(); }
-    else alert('最新のバージョンです（0.6.0）');
+    else alert('最新のバージョンです（0.6.1）');
   } catch(e){ alert('更新を確認できませんでした（通信を確認してください）'); }
   finally { btn.disabled = false; }
 }
@@ -1253,7 +1262,7 @@ function setBase(v){
 }
 function showStatus(){
   const st = document.getElementById('status');
-  st.textContent = 'Version：0.6.0';
+  st.textContent = 'Version：0.6.1';
   st.title = DATA ? 'データの作成日時：' + DATA.generatedAt : 'データはまだ読み込んでいません';
 }
 function showNote(){
