@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0a0805">
 <title>DISTRIBUTION Manager</title>
+<meta name="app-version" content="0.4.0">
 <meta name="apple-mobile-web-app-title" content="DISTRIBUTION Manager">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -37,6 +38,7 @@
   .role{flex:none;font-size:11px;font-weight:700;padding:1px 9px;border-radius:999px;white-space:nowrap;
     color:#1a1204;background:linear-gradient(180deg,var(--gold-1),var(--gold-2) 55%,var(--gold-3));box-shadow:0 0 8px var(--glow)}
   .appbar h1{flex:0 1 auto;overflow:hidden;text-overflow:ellipsis}
+  .appver{margin-left:auto;align-self:flex-start;font-size:11px;color:var(--muted);white-space:nowrap}  /* 版（ヘッダの右上） */
   .appbar .seg button{padding:4px 10px;font-size:12px}
   .wrap{max-width:480px;margin:0 auto;padding:12px 16px calc(92px + env(safe-area-inset-bottom));overflow-x:clip}
   .note .ver{float:right;opacity:.7}
@@ -166,7 +168,7 @@
   table.sum{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
   table.sum th,table.sum td{padding:6px 4px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
   table.sum thead th{color:var(--muted);font-weight:normal}
-  table.sum tbody th{text-align:left;font-weight:normal;white-space:normal}
+  table.sum tbody th{text-align:left;font-weight:normal}  /* 項目名も1行（折り返さない） */
   table.sum tr.tot th,table.sum tr.tot td{font-weight:bold;border-bottom:none;border-top:2px solid var(--edge);color:var(--text)}
   /* 下のタブ：アイコンの下に名前 */
   .tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;display:flex;justify-content:center;
@@ -216,7 +218,7 @@
 </head>
 <body>
 <header class="appbar">
-  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span>
+  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver">v0.4.0</span>
 </header>
 <div class="wrap">
   <div class="note" id="note" hidden></div>
@@ -555,6 +557,8 @@ function platform(){
   if(!p) return '';
   const v = (BASE && p.timeline) ? (p.timeline.filter(t => t.from <= BASE + ' 23:59').pop() || {}) : p;
   const num = x => x == null ? '―' : f1(x);
+  // 取引高（データは億円）：1万億円以上は兆円、1万兆円以上は京円に切り替える（小数第1位まで）
+  const okuUnit = x => { if(x == null) return '<b>―</b> 億円'; const [d, u] = x >= 1e8 ? [1e8, '京'] : x >= 1e4 ? [1e4, '兆'] : [1, '億']; return `<b>${f1(x / d)}</b> ${u}円`; };
   const at = (BASE && v.year) ? `・${v.year}年目 ${v.count}回` : '';
   const im = DATA.images || {};
   const head = (src, text) => src ? `<div class="pf-cell"><img class="pf-img" src="${src}" alt="${text}"></div>` : `<div><div class="l">${text}</div></div>`;   // 画像があれば画像だけ、なければ文字
@@ -562,7 +566,7 @@ function platform(){
     <div class="row${im.company ? ' pf' : ''}">${head(im.company,'会社収益')}
       <div class="a one"><span class="rate">推定</span> <b>${num(v.company)}</b> 万円<span class="rate">／年間</span></div></div>
     <div class="row${im.volume ? ' pf' : ''}">${head(im.volume,'○○の取引高')}
-      <div class="a one"><span class="rate">推定</span> <b>${num(v.volume)}</b> 億円<span class="rate">／年間</span></div></div>
+      <div class="a one"><span class="rate">推定</span> ${okuUnit(v.volume)}<span class="rate">／年間</span></div></div>
   </div></details>`;
 }
 function meBal(){
@@ -624,8 +628,7 @@ function txTable(){
   const tot = ['合計', give+move+out+own+uns, recv, pay, recv-give-move-out-own-uns + move-pay];
   const tr = (r, b) => `<tr${b?' class="tot"':''}><th>${r[0]}</th><td>${c(r[1])}</td><td>${c(r[2])}</td><td>${c(r[3])}</td><td>${r[4]==null?'<span class="rate">—</span>':fu(r[4])}</td></tr>`;
   return `<div class="card" style="padding:10px"><table class="sum"><thead><tr><th></th><th>送金</th><th>入金</th><th>支出</th><th>残高</th></tr></thead>
-    <tbody>${rows.map(r=>tr(r)).join('')}${tr(tot,true)}</tbody></table>
-    <div class="rate" style="margin-top:6px">相対の残高＝移した − 相対での支払い。合計の残高＝手元の合計（自分のウォレットの残高＋相対の残高）</div></div>`;
+    <tbody>${rows.map(r=>tr(r)).join('')}${tr(tot,true)}</tbody></table></div>`;
 }
 function meTx(){
   const F = [['all','全部'],['recv','分配'],['give','ウォレット'],['sotai','相対'],['own','自分の支払い'],['out','対象外'],['uns','未仕分け'],['wait','合意待ち・なし']];
@@ -820,7 +823,8 @@ function setView(){
   h += `<h2>この端末</h2><div class="card">
     <button class="btn sub" onclick="forgetPass()" ${localStorage.getItem('dist-manager-pass') ? '' : 'disabled'}>覚えた合言葉を消す</button>
     <button class="btn ng" onclick="clearData()" ${DATA ? '' : 'disabled'}>データを消す</button></div>`;
-  h += `<h2>アプリ</h2><div class="card"><div class="kv"><span class="kk">版</span><span>0.3.9</span></div></div>`;
+  h += `<h2>アプリ</h2><div class="card"><div class="kv"><span class="kk">版</span><span>0.4.0</span></div>
+    <button class="btn sub" onclick="updateApp()">最新の版にする</button></div>`;
   return h;
 }
 function noData(){
@@ -1034,6 +1038,19 @@ async function restoreFromDrive(){
     if(!f) throw new Error('ドライブにバックアップがありません');
     await restoreBackup(await (await gfetch(G_API + '/' + f.id + '?alt=media')).json());
   } catch(e){ alert(e.message); }
+}
+// 公開中の版を調べ、新しければ入れ替えて開き直す（一時保管を通さずに取る）
+async function updateApp(){
+  try {
+    const html = await (await fetch('./?v=' + Date.now(), {cache: 'no-store'})).text();
+    const m = html.match(/name="app-version" content="([^"]+)"/);
+    if(!m) throw new Error('公開中の版を読み取れませんでした');
+    if(m[1] === '0.4.0'){ alert('最新の版です（' + m[1] + '）'); return; }
+    if(!confirm('新しい版（' + m[1] + '）があります。入れ替えて開き直しますか？')) return;
+    const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration();
+    if(reg) await reg.update();
+    location.reload();
+  } catch(e){ alert('版を確かめられませんでした（つながっているか確かめてください）'); }
 }
 function forgetPass(){ try { localStorage.removeItem('dist-manager-pass'); } catch(e){} render(true); alert('覚えた合言葉を消しました'); }
 function clearData(){
