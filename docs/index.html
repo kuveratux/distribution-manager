@@ -206,6 +206,10 @@
   dialog input[type=password]{margin-top:8px}
   label.chk{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);margin:10px 0 0}
   label.chk input{width:auto}
+  /* お知らせ（ウォレット残高のカードの上）：押すと取引タブへ */
+  .notice{display:flex;align-items:center;gap:6px;margin-bottom:10px;padding:8px 12px;border-radius:10px;cursor:pointer;font-size:13px;
+    color:var(--note-text);background:rgba(250,200,80,.10);border:1px solid rgba(243,214,143,.45)}
+  .notice .go{margin-left:auto;font-size:12px;white-space:nowrap}
   .badge{display:inline-block;min-width:16px;padding:0 4px;border-radius:8px;background:var(--gold-2);color:#000;font-size:10px;margin-left:3px}
 </style>
 </head>
@@ -558,33 +562,34 @@ function meBal(){
   const {per, third} = calc();
   const addr = DATA.walletBalance.amount;
   const tot = blank(); people.forEach(p=>{ for(const k in tot) tot[k]+=per[p.id][k]; }); finish(tot);
-  const wait = txs.filter(t=>t.consent==='wait').length, no = txs.filter(t=>t.consent==='no').length;
   const hand = addr + third, ok = hand + 1e-9 >= tot.held;
   const r = tot.held ? hand/tot.held : 9, mk = MARKS.find(m=>r+1e-9>=m[0]);
   const unsorted = txs.filter(t=>t.kind==='out'&&!t.cls).length;
-  let h = `<div class="card"><div class="head"><div><div class="label">ウォレット残高<span class="rate">（${showD(DATA.walletBalance.at.replace(/-/g,'/'))} 時点）</span></div>
+  let h = (unsorted ? `<div class="notice" onclick="tab='tx';filter='uns';shown=10;render()">未仕分けが <b>${unsorted}件</b> あります<span class="go">取引で見る ›</span></div>` : '')
+    + `<div class="card"><div class="head"><div><div class="label">ウォレット残高<span class="rate">（${showD(DATA.walletBalance.at.replace(/-/g,'/'))} 時点）</span></div>
     <div class="hero-row"><div class="big hero">${f2(addr)}<span class="unit">USDT</span></div>${eyeBtn()}<span class="mark mid" style="color:${mk[2]}" title="${mk[3]}">${mk[1]}</span></div>
     <div class="yen">${yen(addr)}</div></div>${nextDist()}</div>${rateLine()}
-    <details class="fold"><summary>内訳（手元の合計・未払い・合意待ち）</summary>
-      <div class="row"><div class="l">＋ 相対の残り</div><div class="a amt-third">${fu(third)}</div></div>
-      <div class="row"><div class="l"><b>＝ 手元の合計</b></div><div class="a"><b>${fu(hand)}</b></div></div>
-      <div class="row"><div class="l">未払い（預り金の合計）</div><div class="a">${fu(tot.held)}</div></div>
-      <div class="row"><div class="l" style="color:${mk[2]}">${mk[1]} ${ok?'足りています':'足りません'}（未払いの ${fp(Math.floor(r*100))}%）</div><div class="a" style="color:${mk[2]}">${ok?'余裕 ':'不足 '}${fu(Math.abs(hand-tot.held))}</div></div>
-      ${wait||no||unsorted?`<div class="row"><div class="l">${wait?`合意待ち <span class="tag wait">${wait}件</span>`:''} ${no?`合意なし <span class="tag no">${no}件</span>`:''} ${unsorted?`未仕分け <span class="tag wait">${unsorted}件</span>`:''}</div><div class="a s">取引タブで確認</div></div>`:''}
+    <details class="fold"><summary>判定詳細</summary>
+      <div class="row"><div class="l">ウォレット残高</div><div class="a">${fu(addr)}</div></div>
+      <div class="row"><div class="l">相対残高</div><div class="a amt-third">${fu(third)}</div></div>
+      <div class="row"><div class="l"><b>手元合計</b></div><div class="a"><b>${fu(hand)}</b></div></div>
+      <div class="row"><div class="l">未払い</div><div class="a">${fu(tot.held)}</div></div>
+      <div class="row"><div class="l"><b>判定結果</b></div><div class="a" style="color:${mk[2]}">${mk[1]} ${ok?'足りています':'足りません'}（未払いの ${fp(Math.floor(r*100))}%）<br>${ok?'余裕 ':'不足 '}${fu(Math.abs(hand-tot.held))}</div></div>
     </details></div>`;
   h += platform();
   h += `<details class="sec" open><summary>個人別</summary>`;
   people.forEach(p=>{ const x=per[p.id];
     const k3 = p.self ? ['自分の支払い', x.usedSelf] : ['ウォレット', x.give];
+    const hl = p.self ? '残高' : '預り金';   // 自分の分は預かっているお金ではないので「残高」
     const w = v => (x.alloc? Math.max(0,v)/x.alloc*100:0).toFixed(2)+'%';
     h += `<div class="card"><div class="person-head"><span class="name"><span class="sw gold"></span>${p.name}<span class="ratio" style="margin-left:8px;font-weight:normal">${fp(p.ratio*100)}%</span></span></div>
       <div class="bar" style="border:1px solid var(--line);height:12px">${segs(x, [['kh',x.held],['ks',x.usedHere],['kw',k3[1]]])}</div>
-      <div class="rate barcap"><span>預り金 ${fu(x.held)} / 分配累計 ${fu(x.alloc)}</span>
-        <span>（<i class="k kh"></i>預り金：${pc(x.held,x.alloc)}、<i class="k ks"></i>相対：${pc(x.usedHere,x.alloc)}、<i class="k kw"></i>${k3[0]}：${pc(k3[1],x.alloc)}）</span></div>
+      <div class="rate barcap"><span>${hl} ${fu(x.held)} / 分配累計 ${fu(x.alloc)}</span>
+        <span>（<i class="k kh"></i>${hl}：${pc(x.held,x.alloc)}、<i class="k ks"></i>相対：${pc(x.usedHere,x.alloc)}、<i class="k kw"></i>${k3[0]}：${pc(k3[1],x.alloc)}）</span></div>
       <div class="grid grid3">
         <div><span class="label">分配</span><b>${fu(x.alloc)}</b></div>
         <div><span class="label">支払金</span><b>${fu(x.paid)}</b><span class="rate">${k3[0]} ${fu(k3[1])}<br>相対 ${fu(x.usedHere)}</span></div>
-        <div><span class="label">預り金</span><b class="amt-in">${fu(x.held)}</b><span class="rate">${yen(x.held)}</span></div>
+        <div><span class="label">${hl}</span><b class="amt-in">${fu(x.held)}</b><span class="rate">${yen(x.held)}</span></div>
       </div></div>`;
   });
   h += `</details>`;
@@ -801,7 +806,7 @@ function setView(){
   h += `<h2>この端末</h2><div class="card">
     <button class="btn sub" onclick="forgetPass()" ${localStorage.getItem('dist-manager-pass') ? '' : 'disabled'}>覚えた合言葉を消す</button>
     <button class="btn ng" onclick="clearData()" ${DATA ? '' : 'disabled'}>データを消す</button></div>`;
-  h += `<h2>アプリ</h2><div class="card"><div class="kv"><span class="kk">版</span><span>0.3.5</span></div></div>`;
+  h += `<h2>アプリ</h2><div class="card"><div class="kv"><span class="kk">版</span><span>0.3.6</span></div></div>`;
   return h;
 }
 function noData(){
