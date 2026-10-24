@@ -199,6 +199,7 @@
   .kv .kk{color:var(--muted)}
   /* 画像があるときは見出しを画像だけにする。行の高さはそのままで、ちょうど収まる大きさ（上下の余白を詰めて高さ 36px、横は金額の手前まで）、上下の真ん中 */
   .row.pf{padding:4px 0}
+  .pf-start{margin-left:auto;font-size:12px;font-weight:normal;color:var(--muted)}  /* 題名の行の右端に運用開始日 */
   .pf-cell{flex:1;min-width:0;height:36px;display:flex;align-items:center}
   .pf-img{display:block;height:100%;max-width:100%;object-fit:contain;object-position:left center}
   dialog{background:var(--card);color:var(--text);border:1px solid var(--edge);border-radius:14px;padding:16px;width:min(340px,90vw)}
@@ -551,7 +552,7 @@ function platform(){
   if(!p) return '';
   const im = DATA.images || {};
   const head = (src, text) => src ? `<div class="pf-cell"><img class="pf-img" src="${src}" alt="${text}"></div>` : `<div><div class="l">${text}</div></div>`;   // 画像があれば画像だけ、なければ文字
-  return `<details class="sec" open><summary>プラットフォーム収益</summary><div class="plain">
+  return `<details class="sec" open><summary>プラットフォーム収益${p.start ? `<span class="pf-start">運用開始 ${sl(p.start)}</span>` : ''}</summary><div class="plain">
     <div class="row${im.company ? ' pf' : ''}">${head(im.company,'会社収益')}
       <div class="a one"><span class="rate">推定</span> <b>${f1(p.company)}</b> 万円<span class="rate">／年間</span></div></div>
     <div class="row${im.volume ? ' pf' : ''}">${head(im.volume,'○○の取引高')}
@@ -587,7 +588,7 @@ function meBal(){
       <div class="rate barcap"><span>${hl} ${fu(x.held)} / 分配累計 ${fu(x.alloc)}</span>
         <span>（<i class="k kh"></i>${hl}：${pc(x.held,x.alloc)}、<i class="k ks"></i>相対：${pc(x.usedHere,x.alloc)}、<i class="k kw"></i>${k3[0]}：${pc(k3[1],x.alloc)}）</span></div>
       <div class="grid grid3">
-        <div><span class="label">分配</span><b>${fu(x.alloc)}</b></div>
+        <div><span class="label">分配累計</span><b>${fu(x.alloc)}</b></div>
         <div><span class="label">支払金</span><b>${fu(x.paid)}</b><span class="rate">${k3[0]} ${fu(k3[1])}<br>相対 ${fu(x.usedHere)}</span></div>
         <div><span class="label">${hl}</span><b class="amt-in">${fu(x.held)}</b><span class="rate">${yen(x.held)}</span></div>
       </div></div>`;
@@ -806,7 +807,7 @@ function setView(){
   h += `<h2>この端末</h2><div class="card">
     <button class="btn sub" onclick="forgetPass()" ${localStorage.getItem('dist-manager-pass') ? '' : 'disabled'}>覚えた合言葉を消す</button>
     <button class="btn ng" onclick="clearData()" ${DATA ? '' : 'disabled'}>データを消す</button></div>`;
-  h += `<h2>アプリ</h2><div class="card"><div class="kv"><span class="kk">版</span><span>0.3.6</span></div></div>`;
+  h += `<h2>アプリ</h2><div class="card"><div class="kv"><span class="kk">版</span><span>0.3.7</span></div></div>`;
   return h;
 }
 function noData(){
