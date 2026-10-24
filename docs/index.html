@@ -2,23 +2,747 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0a0805">
 <title>DISTRIBUTION Manager</title>
-<link rel="icon" href="icon.svg">
+<meta name="apple-mobile-web-app-title" content="DISTRIBUTION Manager">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <style>
-  body{margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
-    color:#f7f0de;font:15px/1.5 system-ui,"Hiragino Sans","Meiryo UI",sans-serif;
-    background:radial-gradient(120% 60% at 50% -10%,#3a2a0c 0%,#171006 45%,#07060a 75%) fixed,#07060a}
-  img{width:96px;height:96px;border-radius:22px;box-shadow:0 0 24px rgba(240,200,90,.45)}
-  h1{margin:0;font-size:22px;letter-spacing:.08em;background:linear-gradient(180deg,#fff1c1,#ecc864 55%,#c99a2e);
-    -webkit-background-clip:text;background-clip:text;color:transparent}
-  p{margin:0;color:#b9ab8a}
+  /* 配色：黒と金。EARN VIEWER の作り（グラデーションの背景、光る上辺のカード、下のアイコン付きタブ）を金色で */
+  :root{
+    --bg:#07060a; --card:#17130c; --card-2:#0e0b07;
+    --text:#f7f0de; --muted:#b9ab8a;
+    --line:rgba(214,180,100,.22); --edge:rgba(232,200,120,.45);
+    --gold-1:#fff1c1; --gold-2:#ecc864; --gold-3:#c99a2e; --gold-4:#8a6414;
+    --accent:#e6bf55; --accent-2:#b0841f; --glow:rgba(240,200,90,.45);
+    --sky:#9fc3ff; --in:#7fdca8; --out:#ff958a; --gold:#ecd28f; --note-text:#f3d68f; --third:#d6b6ff;
+    /* グラフの人の色：金の濃淡（明るさで見分ける。線は実線・破線・点線も変える） */
+    --s1:#d1a23a; --s2:#f5dc8c; --s3:#94681c; --grid:rgba(214,180,100,.16);
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  html{background:var(--bg)}
+  body{margin:0;color:var(--text);font:15px/1.5 system-ui,-apple-system,"Hiragino Sans","Meiryo UI",sans-serif;
+    background:radial-gradient(120% 60% at 50% -10%, #3a2a0c 0%, #171006 45%, var(--bg) 75%) fixed, var(--bg)}
+  /* ヘッダ */
+  .appbar{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:8px;padding:12px 16px;
+    background:linear-gradient(180deg,#1c150a,#0a0805);border-bottom:1px solid var(--edge);box-shadow:0 6px 18px rgba(0,0,0,.45)}
+  .appbar .logo{width:28px;height:28px;border-radius:7px;flex:none;box-shadow:0 0 10px var(--glow)}
+  .appbar h1{flex:1;margin:0;font-size:clamp(13px,4.2vw,17px);font-weight:800;letter-spacing:.08em;white-space:nowrap;
+    background:linear-gradient(180deg,var(--gold-1),var(--gold-2) 55%,var(--gold-3));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .role{flex:none;font-size:11px;font-weight:700;padding:1px 9px;border-radius:999px;white-space:nowrap;
+    color:#1a1204;background:linear-gradient(180deg,var(--gold-1),var(--gold-2) 55%,var(--gold-3));box-shadow:0 0 8px var(--glow)}
+  .appbar h1{flex:0 1 auto;overflow:hidden;text-overflow:ellipsis}
+  .appbar .seg button{padding:4px 10px;font-size:12px}
+  .wrap{max-width:480px;margin:0 auto;padding:12px 16px calc(92px + env(safe-area-inset-bottom));overflow-x:clip}
+  .note .ver{float:right;opacity:.7}
+  .note{font-size:12px;color:var(--note-text);background:rgba(250,200,80,.10);border-radius:8px;padding:6px 10px;margin-bottom:10px}
+  h2{font-size:15px;color:var(--text);font-weight:600;margin:18px 0 8px}
+  /* カード：上から下へのグラデーション、金の細い枠、上辺の光 */
+  .card{position:relative;background:linear-gradient(180deg,var(--card) 0%,var(--card-2) 100%);border:1px solid var(--edge);border-radius:14px;padding:14px;margin-bottom:10px}
+  .card::before{content:'';position:absolute;top:-1px;left:18%;right:18%;height:2px;border-radius:2px;
+    background:linear-gradient(90deg,transparent,var(--gold-1),transparent);box-shadow:0 0 14px 3px var(--glow);pointer-events:none}
+  .head{display:grid;grid-template-columns:3fr 1fr;gap:10px}
+  .next{border-left:1px solid var(--line);padding-left:10px;display:flex;flex-direction:column;justify-content:center}
+  .next .d{font-size:20px;font-weight:bold;line-height:1.2;color:var(--text)}
+  .next .y{font-size:11px;color:var(--muted)}
+  .hero-row{display:flex;align-items:center;gap:8px}
+  .big{font-size:30px;font-weight:800;letter-spacing:.5px;font-variant-numeric:tabular-nums}
+  .big.hero{background:linear-gradient(180deg,var(--gold-1) 0%,var(--gold-2) 50%,var(--gold-3) 100%);-webkit-background-clip:text;background-clip:text;color:transparent;
+    filter:drop-shadow(0 0 10px rgba(240,200,90,.30))}
+  .big.hero .unit{-webkit-text-fill-color:var(--muted)}
+  .unit{font-size:14px;color:var(--muted);margin-left:4px;font-weight:normal}
+  .yen{font-size:14px;color:var(--text);margin-top:2px}
+  .rate{font-size:11px;color:var(--muted)}
+  .label{font-size:12px;color:var(--muted)}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;margin-top:10px}
+  .grid div b{display:block;font-size:16px}
+  .grid3{grid-template-columns:1fr 1fr 1fr}
+  .grid3 b .us{display:block;font-size:10px;line-height:1.2}  /* 3列の欄は USDT を数字の下にそろえる */
+  .person-head{display:flex;justify-content:space-between;align-items:baseline}
+  .person-head .name{font-weight:bold;font-size:16px}
+  .person-head .ratio{font-size:12px;color:var(--muted)}
+  .sw.gold{background:linear-gradient(135deg,var(--gold-1),var(--gold-2) 45%,var(--gold-3));box-shadow:0 0 6px var(--glow)}
+  .sw{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:baseline}
+  /* 残りの棒：金のグラデーション */
+  .bar{display:flex;height:10px;border-radius:6px;overflow:hidden;background:rgba(0,0,0,.45);margin:10px 0 4px;box-shadow:inset 0 0 0 1px var(--line)}
+  .bar .g{background:var(--sky)} .bar .u{background:var(--out)}
+  .bar .r{background:linear-gradient(90deg,var(--gold-4),var(--gold-3) 35%,var(--gold-2) 75%,var(--gold-1));box-shadow:0 0 10px var(--glow)}
+  /* 内訳で塗り分ける棒：濃さは割合ではなく種類で決める（暗い金→明るい金）。すき間 2px */
+  /* 3つの金：上が明るく下が濃い、つやのある縦のグラデーション。明るさの差で見分ける */
+  .kh{background:linear-gradient(180deg,#fffbea 0%,#f8e4a2 45%,#e9c35e 100%)}
+  .ks{background:linear-gradient(180deg,#fbe39a 0%,#e6b84a 50%,#c39028 100%)}
+  .kw{background:linear-gradient(180deg,#f3c25c 0%,#cf9220 50%,#a46a10 100%)}
+  .bar .kh{box-shadow:0 0 10px var(--glow)}
+  .bar span+span{border-left:2px solid var(--card-2)}
+  .barcap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:0 10px}
+  .k{display:inline-block;width:8px;height:8px;border-radius:2px;margin:0 3px 0 0;vertical-align:baseline}
+  .legend{display:flex;flex-wrap:wrap;gap:12px;font-size:11px;color:var(--muted);margin-bottom:6px}
+  .legend i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px}
+  .row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-top:1px solid var(--line)}
+  .row:first-child{border-top:none}
+  .row .l{font-size:13px} .row .s{font-size:11px;color:var(--muted)}
+  .row .a{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .row.cancel .l,.row.cancel .a{text-decoration:line-through;opacity:.5}
+  /* 数字の色は残高の大きな数字以外、分配と同じ色にそろえる */
+  .amt-in,.amt-out,.amt-give,.amt-third{color:var(--text)}
+  .row .a.one{display:flex;align-items:baseline;gap:4px;white-space:nowrap}
+  .row .a.one b{font-size:clamp(14px,4.4vw,18px)}
+  .us{font-size:.72em;font-weight:normal;color:var(--muted)}
+  table.sum .us{display:block;font-size:9px;line-height:1.1}
+  .unit-note{margin-left:auto;font-size:11px;font-weight:normal;color:var(--muted)}
+  .tag{display:inline-block;font-size:11px;padding:0 7px;border-radius:8px;border:1px solid var(--line);color:var(--muted);margin-left:4px;text-decoration:none}
+  .tag.ok{color:var(--in);border-color:var(--in)}
+  .tag.wait{color:var(--note-text);border-color:var(--note-text)}
+  .tag.no{color:var(--out);border-color:var(--out)}
+  button{font:inherit}
+  .mini{font-size:11px;padding:3px 9px;border-radius:8px;border:1px solid var(--edge);background:var(--card-2);color:var(--muted);cursor:pointer;margin-top:4px}
+  .mini.go{border-color:var(--gold-2);color:var(--gold-1)}
+  /* 切り替えボタン（EARN VIEWER の seg を金に） */
+  .seg{display:inline-flex;border:1px solid var(--edge);border-radius:8px;overflow:hidden;background:var(--card-2)}
+  .seg button{border:0;padding:6px 14px;background:transparent;color:var(--muted);cursor:pointer}
+  .seg button.on{background:linear-gradient(180deg,var(--gold-2),var(--accent-2));color:#1a1204;font-weight:700;box-shadow:inset 0 0 0 1px rgba(255,235,170,.6)}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+  .chips span{font-size:12px;padding:3px 10px;border-radius:12px;border:1px solid var(--edge);color:var(--muted);cursor:pointer;background:var(--card-2)}
+  .chips span.on{border-color:var(--gold-2);color:#1a1204;font-weight:700;background:linear-gradient(180deg,var(--gold-2),var(--accent-2))}
+  label.f{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+  input,select{width:100%;padding:9px 10px;border-radius:10px;border:1px solid var(--edge);background:var(--card-2);color:var(--text);font-size:15px}
+  .two{display:flex;gap:8px} .two>*{flex:1}
+  .calc{margin-top:12px;padding:10px;border-radius:10px;background:rgba(0,0,0,.35);border:1px solid var(--line);font-size:13px}
+  .calc b{font-size:18px;color:var(--text)}
+  .btn{display:block;width:100%;margin-top:12px;padding:11px;border-radius:12px;cursor:pointer;font-size:15px;font-weight:700;
+    border:1px solid rgba(255,230,160,.7);color:#1a1204;background:linear-gradient(180deg,var(--gold-1),var(--gold-2) 45%,var(--gold-3));box-shadow:0 0 14px rgba(240,200,90,.35)}
+  .btn.sub{background:var(--card-2);border:1px solid var(--edge);color:var(--muted);box-shadow:none;font-weight:normal}
+  .btn.ng{background:transparent;border:1px solid var(--out);color:var(--out);box-shadow:none}
+  .btn:disabled{opacity:.4}
+  .qr{display:flex;justify-content:center;margin:12px 0 4px}
+  .qr svg{background:#fff;border-radius:8px;padding:8px;width:180px;height:180px;box-shadow:0 0 0 2px var(--gold-3),0 0 18px var(--glow)}
+  .center{text-align:center}
+  .steps{font-size:12px;color:var(--muted);margin:0 0 8px;padding-left:18px}
+  .steps li.now{color:var(--gold-1);font-weight:bold}
+  .code{font-family:Consolas,monospace;font-size:11px;word-break:break-all;background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:8px;padding:8px;color:var(--muted)}
+  .key{font-size:12px;color:var(--in)}
+  .cam{height:120px;border:2px dashed var(--edge);border-radius:12px;margin:12px 0;display:flex;align-items:center;justify-content:center;color:var(--muted)}
+  .chart{position:relative}
+  .chart svg{display:block;width:100%;height:auto;touch-action:none}
+  .chart text{fill:var(--muted);font-size:10px}
+  .tip{position:absolute;pointer-events:none;background:#0a0805;border:1px solid var(--edge);border-radius:8px;padding:6px 8px;font-size:11px;color:var(--text);white-space:nowrap;display:none;z-index:2}
+  .tip .t{color:var(--muted);margin-bottom:2px}
+  .mark{font-size:30px;line-height:1;padding-right:6px}
+  /* 目のマーク（EARN VIEWER と同じく残高の横） */
+  .eye{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;padding:0;border-radius:50%;flex:none;cursor:pointer;
+    background:var(--card-2);border:1px solid var(--edge);color:var(--muted)}
+  .eye.off{color:var(--gold-2)}
+  /* 折り畳み：EARN VIEWER の fold（見出しの帯＋中身） */
+  details.fold{margin-top:8px}
+  details.fold>summary{cursor:pointer;font-size:12px;color:var(--muted);padding:6px 0;list-style:none}
+  details.fold>summary::before{content:'▸ ';color:var(--gold-3)}
+  details.fold[open]>summary::before{content:'▾ '}
+  /* 折り畳み：外側の枠の中に題名と内容を入れる */
+  details.sec{position:relative;margin-top:16px;padding:0 10px;border:1px solid var(--edge);border-radius:14px;
+    background:linear-gradient(180deg,var(--card) 0%,var(--card-2) 100%)}
+  details.sec::before{content:'';position:absolute;top:-1px;left:18%;right:18%;height:2px;border-radius:2px;
+    background:linear-gradient(90deg,transparent,var(--gold-1),transparent);box-shadow:0 0 14px 3px var(--glow);pointer-events:none}
+  details.sec[open]{padding-bottom:10px}
+  details.sec>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;font-weight:700;font-size:15px;padding:12px 2px}
+  details.sec[open]>summary{border-bottom:1px solid var(--line);margin-bottom:10px}
+  /* 内側の枠：外側より一段暗く、上辺の光はなし */
+  details.sec .card{background:rgba(0,0,0,.30);border-color:var(--line)}
+  details.sec .card::before{display:none}
+  details.sec .card:last-child{margin-bottom:0}
+  /* 内側の枠なし（プラットフォーム収益） */
+  details.sec .plain{padding:0 4px}
+  details.sec>summary::before{content:'▸';color:var(--gold-2)}
+  details.sec[open]>summary::before{content:'▾'}
+  details summary::-webkit-details-marker{display:none}
+  table.sum{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
+  table.sum th,table.sum td{padding:6px 4px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+  table.sum thead th{color:var(--muted);font-weight:normal}
+  table.sum tbody th{text-align:left;font-weight:normal;white-space:normal}
+  table.sum tr.tot th,table.sum tr.tot td{font-weight:bold;border-bottom:none;border-top:2px solid var(--edge);color:var(--text)}
+  /* 下のタブ：アイコンの下に名前 */
+  .tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;display:flex;justify-content:center;
+    padding-bottom:env(safe-area-inset-bottom);background:rgba(10,8,5,.94);backdrop-filter:blur(6px);border-top:1px solid var(--edge)}
+  .tabs div{flex:1;max-width:160px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:9px 0 8px;font-size:12px;color:var(--muted);
+    cursor:pointer;border-top:3px solid transparent;margin-top:-1px}
+  .tabs div.on{color:var(--gold-1);border-top-color:var(--gold-2);text-shadow:0 0 10px var(--glow)}
+  .tab-ic{width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .tabs div.on .tab-ic{filter:drop-shadow(0 0 6px var(--glow))}
+  .badge{display:inline-block;min-width:16px;padding:0 4px;border-radius:8px;background:var(--gold-2);color:#000;font-size:10px;margin-left:3px}
 </style>
 </head>
 <body>
-<img src="icon.svg" alt="">
-<h1>DISTRIBUTION Manager</h1>
-<p>準備中です</p>
+<header class="appbar">
+  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span>
+</header>
+<div class="wrap">
+  <div class="note">ダミーのデータです（分配は1回 6,500 USDT）。QR は絵だけで、読み取りはボタンで代わりにしています。<span class="ver">版 0.1.0</span></div>
+  <div id="view"></div>
+</div>
+<div class="tabs" id="tabs"></div>
+
+<script>
+const TODAY = (()=>{ const d = new Date(); d.setHours(0,0,0,0); return d; })();
+const DIST_MONTHS = 3; // 分配は3か月に1回
+// 今のレート（残高の円表示、1時間ごと）
+const RATE = 156.48, RATE_AT = '10/23 14:05';
+// 支払い用：その日の10時のレート（仲値そのまま）。10時より前は前の日のレート
+const DAY_RATE = {'2026/1/16':157.80, '2026/4/16':143.20, '2026/7/16':148.60, '2026/10/16':150.90, '2026/6/12':155.10, '2026/9/14':150.20, '2026/10/20':157.50, '2026/10/21':157.20, '2026/10/22':156.90, '2026/10/23':156.48};
+const people = [
+  {id:'M', name:'自分', ratio:0.5, self:true, color:'var(--s1)'},
+  {id:'A', name:'Aさん', ratio:0.25, color:'var(--s2)'},
+  {id:'B', name:'Bさん', ratio:0.25, color:'var(--s3)'},
+];
+// 相対のアドレス（固定、複数登録できる）。ここへの送金は自動で「相対へ移した」
+const SOTAI = [{id:'S1', name:'相対1', addr:'0x7a3f…c210'}, {id:'S2', name:'相対2', addr:'0x19be…04d7'}];
+// kind: recv=分配（受け取り） give=相手のウォレットへ move=相対へ移した payThird=相対で支払い（円で入力）
+//       out=相対・相手のアドレス以外への送金（cls: other=対象外 self=自分の支払い〔どちらもエクセルで仕分け〕 null=未仕分け。どれもウォレットの残高は減る）
+//       wout=相手のウォレットから送金（相手用アプリの中だけで仕分け。cls: spend=支出 other=対象外 null=未仕分け）
+// consent: self=合意不要（自分の分） wait=合意待ち ok=合意済み no=合意なし cancel=取り消し
+let txs = [
+  {id:1,  d:'2026/01/16 10:00', kind:'recv', amt:6500},
+  {id:2,  d:'2026/02/10 13:30', kind:'out', amt:300, to:'0x55c1…9e02', cls:'other'},
+  {id:20, d:'2026/08/05 18:20', kind:'out', amt:200, to:'0x3be0…5a71', cls:'self'},
+  {id:19, d:'2026/10/12 16:45', kind:'out', amt:150, to:'0x8d02…77ab', cls:null},
+  {id:3,  d:'2026/03/05 21:05', kind:'give', amt:600, who:'B', match:true},
+  {id:14, d:'2026/04/02 12:00', kind:'wout', amt:150, who:'B', cls:'spend'},
+  {id:4,  d:'2026/04/16 10:00', kind:'recv', amt:6500},
+  {id:5,  d:'2026/05/20 11:20', kind:'move', amt:2000, to:'S1'},
+  {id:6,  d:'2026/06/12 19:40', kind:'payThird', yen:46500, who:'B', memo:'食事', consent:'ok', hist:['6/12 合意']},
+  {id:7,  d:'2026/07/16 10:00', kind:'recv', amt:6500},
+  {id:8,  d:'2026/09/01 15:10', kind:'move', amt:1000, to:'S2'},
+  {id:15, d:'2026/08/20 20:00', kind:'give', amt:1200, who:'A', match:true},
+  {id:21, d:'2026/09/30 19:00', kind:'give', amt:800, who:'A', match:true},
+  {id:16, d:'2026/09/02 14:30', kind:'wout', amt:300, who:'A', cls:'spend'},
+  {id:17, d:'2026/10/05 09:40', kind:'wout', amt:100, who:'A', cls:'other'},
+  {id:18, d:'2026/10/10 17:20', kind:'wout', amt:120, who:'B', cls:null},
+  {id:9,  d:'2026/09/14 18:00', kind:'payThird', yen:30000, who:'M', memo:'交通費', consent:'self', hist:[]},
+  {id:22, d:'2026/09/14 20:00', kind:'payThird', yen:31000, who:'A', memo:'食事', consent:'ok', hist:['9/14 合意']},
+  {id:10, d:'2026/10/16 10:00', kind:'recv', amt:6500},
+  {id:11, d:'2026/10/21 19:40', kind:'payThird', yen:55000, who:'B', memo:'食事', consent:'ok', hist:['10/21 合意']},
+  {id:12, d:'2026/10/22 08:30', kind:'payThird', yen:18000, who:'B', memo:'差し入れ', consent:'no', hist:['10/22 合意しない']},
+  {id:13, d:'2026/10/23 12:10', kind:'payThird', yen:24000, who:'B', memo:'日用品', consent:'wait', hist:[]},
+];
+let mode = 'me', tab = 'bal', filter = 'all', shown = 10;
+// 残高の状態：手元の合計 ÷ 未払い
+const MARKS = [[1.10,'◎','var(--in)','未払いの110%以上'],[1.00,'〇','var(--in)','100%以上'],[0.95,'△','var(--note-text)','95%以上'],[0,'×','var(--out)','95%未満']];
+let payFlow = {step:0, tx:null};
+let agreeFlow = {step:0, tx:null};
+let seq = 100;
+
+const KIND = {recv:'分配', give:'ウォレットへ', move:'相対へ移した', payThird:'相対で支払い', out:'対象外', wout:'ウォレットから送金'};
+let hide = false;
+try { hide = localStorage.getItem('dist-manager-hide')==='1'; } catch(e){}
+const MASK = '＊＊＊＊';
+const f2 = n => hide ? MASK : n.toLocaleString('ja-JP',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fy = n => (hide ? MASK : Math.round(n).toLocaleString('ja-JP')) + ' 円';
+const fu = n => f2(n) + '<span class="us"> USDT</span>';
+const f1 = n => hide ? MASK : (Math.round(n*10)/10).toLocaleString('ja-JP',{minimumFractionDigits:1,maximumFractionDigits:1});
+const fp = v => hide ? '＊＊' : v;           // 比率・割合・レート
+const bw = v => hide ? '0%' : v;            // 棒の長さ
+const eyeBtn = () => `<button class="eye ${hide?'off':''}" onclick="toggleHide()" aria-label="金額を隠す／見せる">${hide?EYE_OFF:EYE}</button>`;
+function toggleHide(){ hide=!hide; try{ localStorage.setItem('dist-manager-hide', hide?'1':'0'); }catch(e){} render(true); }
+const EYE = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>`;
+const EYE_OFF = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.9 17.9A10.4 10.4 0 0 1 12 19C5 19 1 12 1 12a18.5 18.5 0 0 1 5.1-5.9M9.9 5.2A9.6 9.6 0 0 1 12 5c7 0 11 7 11 7a18.6 18.6 0 0 1-2.2 3.2M14.1 14.1a3 3 0 1 1-4.2-4.2"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
+const yen = n => '約 ' + fy(n*RATE);
+const pname = id => people.find(p=>p.id===id).name;
+const floor2 = n => Math.floor(n*100+1e-9)/100;
+const toDate = d => { const [ymd, hm] = d.split(' '); const [y,m,dd] = ymd.split('/').map(Number); const [h,mi] = (hm||'0:0').split(':').map(Number); return new Date(y,m-1,dd,h,mi); };
+const showD = d => { const x = toDate(d); return `${x.getMonth()+1}/${x.getDate()} ${d.split(' ')[1]}`; };
+const shortD = dt => `${dt.getMonth()+1}/${dt.getDate()}`;
+
+// 分配：相手は比率で切り捨て、残りは自分の分
+function shares(amt){
+  const r = {};
+  people.filter(p=>!p.self).forEach(p=>r[p.id]=floor2(amt*p.ratio));
+  const self = people.find(p=>p.self);
+  r[self.id] = floor2(amt - Object.values(r).reduce((a,b)=>a+b,0));
+  return r;
+}
+// 支払日のレート（10時より前は前の日）
+function rateFor(d){
+  const dt = toDate(d);
+  if(dt.getHours() < 10) dt.setDate(dt.getDate()-1);
+  const key = `${dt.getFullYear()}/${dt.getMonth()+1}/${dt.getDate()}`;
+  return {key: shortD(dt), rate: DAY_RATE[key]};
+}
+const usdtOf = t => t.kind==='payThird' ? floor2(t.yen / rateFor(t.d).rate) : t.amt;
+const sorted = () => txs.slice().sort((a,b)=>toDate(a.d)-toDate(b.d));
+
+// 未受領＝分配 − ウォレットへ送った − 相対で支払った
+// ウォレット＝ウォレットへ送った − ウォレットからの支出（仕分けで「支出」にしたもの）
+// 残高＝ウォレット＋未受領、支出＝相対で支払った＋ウォレットからの支出
+const blank = () => ({alloc:0,give:0,usedHere:0,usedWallet:0,usedSelf:0});
+function apply(per, t){
+  if(t.consent==='cancel') return;
+  const a = usdtOf(t);
+  if(t.kind==='recv'){ const s=shares(a); people.forEach(p=>per[p.id].alloc+=s[p.id]); }
+  if(t.kind==='give') per[t.who].give+=a;
+  if(t.kind==='payThird') per[t.who].usedHere+=a;
+  if(t.kind==='out' && t.cls==='self') per[people.find(p=>p.self).id].usedSelf+=a;
+  if(t.kind==='wout' && t.cls==='spend') per[t.who].usedWallet+=a;
+}
+function finish(x){
+  x.unrec = x.alloc - x.give - x.usedHere;
+  x.wallet = x.give - x.usedWallet;
+  x.used = x.usedHere + x.usedWallet;
+  x.bal = x.wallet + x.unrec;
+  // 自分用：支払金＝ウォレット＋相対、預り金＝分配−支払金（相手のウォレットのその後は見ない）
+  x.paid = x.give + x.usedHere + x.usedSelf;
+  x.held = x.alloc - x.paid;
+  return x;
+}
+function calc(){
+  const per = {};
+  people.forEach(p=>per[p.id]=blank());
+  let addr=0, third=0;
+  sorted().forEach(t=>{
+    apply(per, t);
+    if(t.consent==='cancel') return;
+    const a = usdtOf(t);
+    if(t.kind==='recv') addr+=a;
+    if(t.kind==='give'||t.kind==='out') addr-=a;
+    if(t.kind==='move'){ addr-=a; third+=a; }
+    if(t.kind==='payThird') third-=a;
+  });
+  people.forEach(p=>finish(per[p.id]));
+  return {per, addr, third};
+}
+// 次回分配予定：最後の分配から3か月後
+function nextDist(){
+  const last = sorted().filter(t=>t.kind==='recv').pop();
+  const n = toDate(last.d); n.setMonth(n.getMonth()+DIST_MONTHS); n.setHours(0,0,0,0);
+  const days = Math.round((n - TODAY)/86400000);
+  return `<div class="next"><span class="label">次回分配予定</span><span class="d">${shortD(n)}</span><span class="y">${n.getFullYear()}年・あと${days}日</span></div>`;
+}
+
+// 分配＝支出＋ウォレット＋未受領
+function bar(x){
+  const w = v => (x.alloc? Math.max(0,v)/x.alloc*100:0).toFixed(2)+'%';
+  return `<div class="bar"><span class="u" style="width:${bw(w(x.used))}"></span><span class="g" style="width:${bw(w(x.wallet))}"></span><span class="r" style="width:${bw(w(x.unrec))}"></span></div>`;
+}
+// 内訳の棒（分配の累計＝棒全体）と割合
+function segs(x, parts){
+  if(hide) return '';  // 目のマークで隠すときは棒を空に
+  return parts.filter(([c,v])=>v>0).map(([c,v])=>`<span class="${c}" style="width:${bw((x.alloc? Math.max(0,v)/x.alloc*100:0).toFixed(2)+'%')}"></span>`).join('');
+}
+const pc = (v, all) => fp(Math.round(all? Math.max(0,v)/all*100 : 0) + '%');
+const legend = `<div class="legend"><span><i style="background:var(--out)"></i>支出</span><span><i style="background:var(--sky)"></i>ウォレット</span><span><i style="background:var(--in)"></i>未受領</span><span>（ウォレット＋未受領＝残高）</span></div>`;
+function detail(x, ratioLabel){
+  return `<div class="grid">
+      <div><span class="label">分配${ratioLabel||''}</span><b>${fu(x.alloc)}</b></div>
+      <div><span class="label">支出</span><b class="amt-out">${fu(x.used)}</b><span class="rate">相対で ${fu(x.usedHere)}・ウォレットから ${fu(x.usedWallet)}</span></div>
+      <div><span class="label">ウォレット</span><b class="amt-give">${fu(x.wallet)}</b><span class="rate">受け取り済み・未支出</span></div>
+      <div><span class="label">未受領</span><b class="amt-in">${fu(x.unrec)}</b></div>
+    </div>`;
+}
+const rateLine = () => `<div class="rate">1 USDT ＝ ${fp(RATE)} 円（${RATE_AT}）</div>`;
+
+/* ---------- グラフ ---------- */
+const CW = 448, CH = 200, PL = 40, PR = 8, PT = 10, PB = 24;
+function niceMax(v){ const p = Math.pow(10, Math.floor(Math.log10(v))); return Math.ceil(v/p/ (v/p>5?2:1))*p*(v/p>5?2:1); }
+function yAxis(max){
+  let h=''; for(let i=0;i<=4;i++){ const v=max*i/4, y=PT+(CH-PT-PB)*(1-i/4);
+    h+=`<line x1="${PL}" x2="${CW-PR}" y1="${y}" y2="${y}" stroke="var(--grid)" stroke-width="1"/><text x="${PL-6}" y="${y+3}" text-anchor="end">${hide?'＊':Math.round(v).toLocaleString()}</text>`; }
+  return h;
+}
+// 分配の実績：分配ごとの棒（自分用は人ごとに積み上げ）
+function distChart(ids){
+  if(hide) return '<div class="s center" style="padding:24px 0">目のマークで隠しています</div>';
+  const ds = sorted().filter(t=>t.kind==='recv');
+  const vals = ds.map(t=>{ const s=shares(t.amt); return ids.map(id=>s[id]); });
+  const max = niceMax(Math.max(...vals.map(v=>v.reduce((a,b)=>a+b,0))));
+  const slot = (CW-PL-PR)/ds.length, bw = Math.min(36, slot*0.5), sy = v => (CH-PT-PB)*v/max;
+  let h = yAxis(max);
+  ds.forEach((t,i)=>{
+    const x = PL + slot*i + (slot-bw)/2; let y = CH-PB;
+    ids.forEach((id,k)=>{
+      const hh = sy(vals[i][k]); const top = k===ids.length-1;
+      const gap = k>0 ? 2 : 0;
+      h += top
+        ? `<path d="M${x},${y-gap} V${y-hh+4} Q${x},${y-hh} ${x+4},${y-hh} H${x+bw-4} Q${x+bw},${y-hh} ${x+bw},${y-hh+4} V${y-gap} Z" fill="${people.find(p=>p.id===id).color}"/>`
+        : `<rect x="${x}" y="${y-hh+ (k>0?0:0)}" width="${bw}" height="${Math.max(0,hh-gap)}" fill="${people.find(p=>p.id===id).color}"/>`;
+      y -= hh;
+    });
+    const tot = vals[i].reduce((a,b)=>a+b,0);
+    h += `<text x="${x+bw/2}" y="${y-4}" text-anchor="middle" style="fill:var(--text)">${f2(tot)}</text>`;
+    h += `<text x="${x+bw/2}" y="${CH-8}" text-anchor="middle">${shortD(toDate(t.d))}</text>`;
+    h += `<rect x="${PL+slot*i}" y="${PT}" width="${slot}" height="${CH-PT-PB}" fill="transparent" data-i="${i}"/>`;
+  });
+  const tips = ds.map((t,i)=>`<div class="t">${toDate(t.d).getFullYear()}/${shortD(toDate(t.d))} 分配</div>` +
+    ids.map((id,k)=>`<div><span class="sw" style="background:${people.find(p=>p.id===id).color}"></span>${pname(id)} ${fu(vals[i][k])}</div>`).join('') +
+    (ids.length>1?`<div>合計 ${fu(vals[i].reduce((a,b)=>a+b,0))}</div>`:''));
+  return chartBox('dist', h, tips, ids);
+}
+// 残高の推移：取引ごとに残高を追う階段の線
+function balChart(ids, metric){
+  if(hide) return '<div class="s center" style="padding:24px 0">目のマークで隠しています</div>';
+  const per = {}; people.forEach(p=>per[p.id]=blank());
+  const pts = [];
+  sorted().filter(t=>metric!=='held'||sOf(t)).forEach(t=>{ apply(per,t); pts.push({dt:toDate(t.d), v:ids.map(id=>finish(per[id])[metric||'bal']), t}); });
+  pts.push({dt:TODAY, v:pts[pts.length-1].v, t:null});
+  const t0 = new Date(pts[0].dt.getFullYear(),0,1), t1 = TODAY;
+  const max = niceMax(Math.max(...pts.flatMap(p=>p.v)));
+  const sx = dt => PL + (CW-PL-PR)*(dt-t0)/(t1-t0), sy = v => PT + (CH-PT-PB)*(1-v/max);
+  let h = yAxis(max);
+  for(let m=0;m<=t1.getMonth();m+=3){ const dt=new Date(t0.getFullYear(),m,1); h+=`<text x="${sx(dt)}" y="${CH-8}" text-anchor="middle">${m+1}月</text>`; }
+  ids.forEach((id,k)=>{
+    let d = `M${sx(t0)},${sy(0)}`;
+    pts.forEach(p=>{ d += ` H${sx(p.dt)} V${sy(p.v[k])}`; });
+    h += `<path d="${d}" fill="none" stroke="${people.find(p=>p.id===id).color}" stroke-width="2" stroke-linejoin="round" stroke-dasharray="${DASH[k]}"/>`;
+    const last = pts[pts.length-1];
+    if(ids.length===1) h += `<circle cx="${sx(last.dt)}" cy="${sy(last.v[k])}" r="4" fill="${people.find(p=>p.id===id).color}" stroke="var(--card)" stroke-width="2"/>`;
+  });
+  h += `<line class="xh" x1="0" x2="0" y1="${PT}" y2="${CH-PB}" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3" style="display:none"/>`;
+  h += `<rect x="${PL}" y="${PT}" width="${CW-PL-PR}" height="${CH-PT-PB}" fill="transparent" data-line="1"/>`;
+  window._balPts = {pts, ids, sx, t0, t1};
+  return chartBox('bal', h, null, ids);
+}
+const DASH = ['', '6 4', '2 3'];
+function chartBox(key, inner, tips, ids){
+  window['_tips_'+key] = tips;
+  const sample = (id,k) => key==='bal'
+    ? `<svg width="22" height="8" style="vertical-align:middle;margin-right:4px"><line x1="1" y1="4" x2="21" y2="4" stroke="${people.find(p=>p.id===id).color}" stroke-width="2" stroke-dasharray="${DASH[k]}"/></svg>`
+    : `<i style="background:${people.find(p=>p.id===id).color}"></i>`;
+  const lg = ids.length>1 ? `<div class="legend" style="margin-top:6px">${ids.map((id,k)=>`<span>${sample(id,k)}${pname(id)}</span>`).join('')}</div>` : '';
+  return `<div class="chart" id="c_${key}"><svg viewBox="0 0 ${CW} ${CH}">${inner}</svg><div class="tip"></div></div>${lg}`;
+}
+function hookCharts(){
+  const d = document.getElementById('c_dist');
+  if(d){ const tip=d.querySelector('.tip');
+    d.querySelectorAll('rect[data-i]').forEach(r=>{
+      const show=e=>{ tip.innerHTML=window._tips_dist[r.dataset.i]; tip.style.display='block'; place(d,tip,e); };
+      r.addEventListener('pointerenter',show); r.addEventListener('pointermove',e=>place(d,tip,e)); r.addEventListener('pointerdown',show);
+      r.addEventListener('pointerleave',()=>tip.style.display='none');
+    }); }
+  const b = document.getElementById('c_bal');
+  if(b){ const tip=b.querySelector('.tip'), svg=b.querySelector('svg'), xh=b.querySelector('.xh'), hit=b.querySelector('rect[data-line]');
+    const move=e=>{
+      const {pts, ids, t0, t1} = window._balPts, box=svg.getBoundingClientRect();
+      const vx = (e.clientX-box.left)/box.width*CW;
+      const dt = new Date(+t0 + (t1-t0)*(vx-PL)/(CW-PL-PR));
+      let p = pts[0]; pts.forEach(q=>{ if(q.dt<=dt) p=q; });
+      const x = window._balPts.sx(p.dt); xh.setAttribute('x1',x); xh.setAttribute('x2',x); xh.style.display='';
+      tip.innerHTML = `<div class="t">${p.dt.getFullYear()}/${shortD(p.dt)}${p.t?'　'+KIND[p.t.kind]:'　今日'}</div>` +
+        ids.map((id,k)=>`<div><span class="sw" style="background:${people.find(q=>q.id===id).color}"></span>${pname(id)} ${fu(p.v[k])}</div>`).join('');
+      tip.style.display='block'; place(b,tip,e);
+    };
+    hit.addEventListener('pointermove',move); hit.addEventListener('pointerdown',move);
+    hit.addEventListener('pointerleave',()=>{ tip.style.display='none'; xh.style.display='none'; });
+  }
+}
+function place(box, tip, e){
+  const r = box.getBoundingClientRect(); let x = e.clientX-r.left+12, y = e.clientY-r.top-10;
+  if(x + tip.offsetWidth > r.width) x = e.clientX-r.left-tip.offsetWidth-12;
+  tip.style.left = Math.max(0,x)+'px'; tip.style.top = Math.max(0,y)+'px';
+}
+
+/* ---------- 取引の行 ---------- */
+function consentTag(t){
+  if(t.kind!=='payThird') return '';
+  return {self:'', ok:'<span class="tag ok">合意済み ✓</span>', wait:'<span class="tag wait">合意待ち</span>',
+    no:'<span class="tag no">合意なし</span>', cancel:'<span class="tag">取り消し</span>'}[t.consent];
+}
+function srcTag(t){ return t.kind==='payThird' ? '<span class="tag">手入力</span>' : ''; }
+function payLine(t){
+  const r = rateFor(t.d);
+  return `${fy(t.yen)}（${r.key} のレート 1 USDT ＝ ${fp(r.rate)} 円）`;
+}
+function txRow(t, forWho, actions){
+  let title = KIND[t.kind], sub = showD(t.d), amt, cls;
+  if(t.kind==='recv'){
+    const s = shares(t.amt);
+    if(!forWho) sub += '　' + people.map(p=>p.name+' '+fu(s[p.id])).join('・');
+    amt='+'+fu(forWho ? s[forWho] : t.amt); cls='amt-in';
+  } else if(t.kind==='give'){
+    title = forWho ? 'ウォレットへ' : pname(t.who)+'のウォレットへ';
+    sub += t.match ? '　<span class="tag ok">相手側の受け取り 一致</span>' : '';
+    amt=fu(t.amt); cls='amt-give';
+  } else if(t.kind==='move'){
+    const so = SOTAI.find(x=>x.id===t.to);
+    sub += `　${so.name}（${so.addr}）へまとめて移した`; amt=fu(t.amt); cls='amt-third';
+  } else if(t.kind==='out'){
+    title = {other:'対象外', self:'自分の支払い'}[t.cls] || '未仕分け<span class="tag wait">エクセルで仕分け</span>';
+    sub += `　${t.to} へ（相対・相手のアドレスではない）`; amt=fu(t.amt); cls='';
+  } else if(t.kind==='wout'){
+    title = forWho ? 'ウォレットから送金' : pname(t.who)+'のウォレットから送金';
+    const c = {spend:'<span class="tag">支出</span>', other:'<span class="tag">対象外</span>'}[t.cls] || '<span class="tag wait">未仕分け</span>';
+    title += c;
+    sub += '　あなたのアドレスの取引（仕分けはこの端末の中だけ）';
+    amt = (t.cls==='spend'?'−':'') + fu(t.amt); cls = t.cls==='spend' ? 'amt-out' : '';
+    if(t.cls==='other') sub += '<br>分配とは関係ない送金として、計算に入れていません';
+  } else {
+    title = forWho ? '支出（相対で支払い）' : pname(t.who)+'の分を相対で支払い';
+    sub += '　' + t.memo + '<br>' + payLine(t);
+    if(t.hist && t.hist.length) sub += '<br>履歴：' + t.hist.join(' → ');
+    amt='−'+fu(usdtOf(t)); cls='amt-out';
+  }
+  let btn = '';
+  if(actions==='you' && t.kind==='wout')
+    btn = `<div><button class="mini ${t.cls==='spend'?'go':''}" onclick="sortWout(${t.id},'spend')">支出にする</button> <button class="mini ${t.cls==='other'?'go':''}" onclick="sortWout(${t.id},'other')">対象外にする</button></div>`;
+  if(actions==='me' && (t.consent==='wait'||t.consent==='no'))
+    btn = `<div><button class="mini" onclick="cancelTx(${t.id})">取り消す</button></div>`;
+  if(actions==='you' && t.consent==='no')
+    btn = `<div><button class="mini go" onclick="agreeOpen(${t.id})">あとから合意する</button></div>`;
+  if(actions==='you' && t.consent==='wait')
+    btn = `<div><button class="mini go" onclick="agreeOpen(${t.id})">確かめる</button></div>`;
+  return `<div class="row ${t.consent==='cancel'?'cancel':''}"><div><div class="l">${title}${srcTag(t)}${consentTag(t)}</div><div class="s">${sub}</div>${btn}</div><div class="a ${cls}">${amt}</div></div>`;
+}
+
+function fakeQR(seed){
+  const n=25, s=7.2; let r=seed*9301+49297, out='';
+  const rnd=()=>{ r=(r*9301+49297)%233280; return r/233280; };
+  const finder=(x,y)=>`<rect x="${x*s}" y="${y*s}" width="${7*s}" height="${7*s}" fill="#000"/><rect x="${(x+1)*s}" y="${(y+1)*s}" width="${5*s}" height="${5*s}" fill="#fff"/><rect x="${(x+2)*s}" y="${(y+2)*s}" width="${3*s}" height="${3*s}" fill="#000"/>`;
+  for(let y=0;y<n;y++) for(let x=0;x<n;x++){
+    if((x<8&&y<8)||(x>16&&y<8)||(x<8&&y>16)) continue;
+    if(rnd()<0.5) out+=`<rect x="${x*s}" y="${y*s}" width="${s}" height="${s}" fill="#000"/>`;
+  }
+  return `<div class="qr"><svg viewBox="0 0 ${n*s} ${n*s}">${out}${finder(0,0)}${finder(18,0)}${finder(0,18)}</svg></div>`;
+}
+
+/* ---------- 自分用 ---------- */
+const ALL = people.map(p=>p.id);
+const sOf = t => t.kind!=='wout'; // 自分用には相手のウォレットのその後を出さない
+// プラットフォーム収益（推定）
+// 会社収益＝自分の分配金（最新の分配を分配の日のレートで円に直す）×5000×4、取引高＝会社収益×200
+function platform(){
+  const last = sorted().filter(t=>t.kind==='recv').pop();
+  const mine = shares(last.amt)[people.find(p=>p.self).id];
+  const company = mine * rateFor(last.d).rate * 5000 * 4, volume = company * 200;
+  return `<details class="sec" open><summary>プラットフォーム収益</summary><div class="plain">
+    <div class="row"><div><div class="l">会社収益</div></div>
+      <div class="a one"><span class="rate">推定</span> <b>${f1(company / 1e4)}</b> 万円<span class="rate">／年間</span></div></div>
+    <div class="row"><div><div class="l">○○の取引高</div></div>
+      <div class="a one"><span class="rate">推定</span> <b>${f1(volume / 1e8)}</b> 億円<span class="rate">／年間</span></div></div>
+  </div></details>`;
+}
+function meBal(){
+  const {per, addr, third} = calc();
+  const tot = blank(); people.forEach(p=>{ for(const k in tot) tot[k]+=per[p.id][k]; }); finish(tot);
+  const wait = txs.filter(t=>t.consent==='wait').length, no = txs.filter(t=>t.consent==='no').length;
+  const hand = addr + third, ok = hand + 1e-9 >= tot.held;
+  const r = tot.held ? hand/tot.held : 9, mk = MARKS.find(m=>r+1e-9>=m[0]);
+  const unsorted = txs.filter(t=>t.kind==='out'&&!t.cls).length;
+  let h = `<div class="card"><div class="head"><div style="display:flex;align-items:center;gap:8px"><div style="flex:1"><div class="label">ウォレット残高</div>
+    <div class="hero-row"><div class="big hero">${f2(addr)}<span class="unit">USDT</span></div>${eyeBtn()}</div>
+    <div class="yen">${yen(addr)}</div></div><span class="mark" style="color:${mk[2]}" title="${mk[3]}">${mk[1]}</span></div>${nextDist()}</div>${rateLine()}
+    <details class="fold"><summary>内訳（手元の合計・未払い・合意待ち）</summary>
+      <div class="row"><div class="l">＋ 相対の残り</div><div class="a amt-third">${fu(third)}</div></div>
+      <div class="row"><div class="l"><b>＝ 手元の合計</b></div><div class="a"><b>${fu(hand)}</b></div></div>
+      <div class="row"><div class="l">未払い（預り金の合計）</div><div class="a">${fu(tot.held)}</div></div>
+      <div class="row"><div class="l" style="color:${mk[2]}">${mk[1]} ${ok?'足りています':'足りません'}（未払いの ${fp(Math.floor(r*100))}%）</div><div class="a" style="color:${mk[2]}">${ok?'余裕 ':'不足 '}${fu(Math.abs(hand-tot.held))}</div></div>
+      ${wait||no||unsorted?`<div class="row"><div class="l">${wait?`合意待ち <span class="tag wait">${wait}件</span>`:''} ${no?`合意なし <span class="tag no">${no}件</span>`:''} ${unsorted?`未仕分け <span class="tag wait">${unsorted}件</span>`:''}</div><div class="a s">取引タブで確認</div></div>`:''}
+    </details></div>`;
+  h += platform();
+  h += `<details class="sec" open><summary>個人別</summary>`;
+  people.forEach(p=>{ const x=per[p.id];
+    const k3 = p.self ? ['自分の支払い', x.usedSelf] : ['ウォレット', x.give];
+    const w = v => (x.alloc? Math.max(0,v)/x.alloc*100:0).toFixed(2)+'%';
+    h += `<div class="card"><div class="person-head"><span class="name"><span class="sw gold"></span>${p.name}<span class="ratio" style="margin-left:8px;font-weight:normal">${fp(p.ratio*100)}%</span></span></div>
+      <div class="bar" style="border:1px solid var(--line);height:12px">${segs(x, [['kh',x.held],['ks',x.usedHere],['kw',k3[1]]])}</div>
+      <div class="rate barcap"><span>預り金 ${fu(x.held)} / 分配累計 ${fu(x.alloc)}</span>
+        <span>（<i class="k kh"></i>預り金：${pc(x.held,x.alloc)}、<i class="k ks"></i>相対：${pc(x.usedHere,x.alloc)}、<i class="k kw"></i>${k3[0]}：${pc(k3[1],x.alloc)}）</span></div>
+      <div class="grid grid3">
+        <div><span class="label">分配</span><b>${fu(x.alloc)}</b></div>
+        <div><span class="label">支払金</span><b>${fu(x.paid)}</b><span class="rate">${k3[0]} ${fu(k3[1])}<br>相対 ${fu(x.usedHere)}</span></div>
+        <div><span class="label">預り金</span><b class="amt-in">${fu(x.held)}</b><span class="rate">${yen(x.held)}</span></div>
+      </div></div>`;
+  });
+  h += `</details>`;
+  h += `<details class="sec"><summary>実績と推移</summary>
+    <div class="card"><div class="label" style="margin-bottom:6px">分配の実績</div>${distChart(ALL)}</div>
+    <div class="card"><div class="label" style="margin-bottom:6px">預り金の推移</div>${balChart(ALL,'held')}</div></details>`;
+  return h;
+}
+
+function txTable(){
+  const live = txs.filter(t=>sOf(t) && t.consent!=='cancel');
+  const sum = f => live.filter(f).reduce((a,t)=>a+usdtOf(t),0);
+  const recv = sum(t=>t.kind==='recv'), give = sum(t=>t.kind==='give'), move = sum(t=>t.kind==='move'),
+        pay = sum(t=>t.kind==='payThird'), out = sum(t=>t.kind==='out'&&t.cls==='other'), own = sum(t=>t.kind==='out'&&t.cls==='self'), uns = sum(t=>t.kind==='out'&&!t.cls);
+  const c = v => v ? fu(v) : '<span class="rate">—</span>';
+  const rows = [
+    ['分配', 0, recv, 0, null],
+    ['ウォレット（相手へ）', give, 0, 0, null],
+    ['相対', move, 0, pay, move-pay],
+    ['対象外', out, 0, 0, null],
+    ['自分の支払い', own, 0, 0, null],
+    ['未仕分け', uns, 0, 0, null],
+  ];
+  const tot = ['合計', give+move+out+own+uns, recv, pay, recv-give-move-out-own-uns + move-pay];
+  const tr = (r, b) => `<tr${b?' class="tot"':''}><th>${r[0]}</th><td>${c(r[1])}</td><td>${c(r[2])}</td><td>${c(r[3])}</td><td>${r[4]==null?'<span class="rate">—</span>':fu(r[4])}</td></tr>`;
+  return `<div class="card" style="padding:10px"><table class="sum"><thead><tr><th></th><th>送金</th><th>入金</th><th>支出</th><th>残高</th></tr></thead>
+    <tbody>${rows.map(r=>tr(r)).join('')}${tr(tot,true)}</tbody></table>
+    <div class="rate" style="margin-top:6px">相対の残高＝移した − 相対での支払い。合計の残高＝手元の合計（自分のウォレットの残高＋相対の残高）</div></div>`;
+}
+function meTx(){
+  const F = [['all','全部'],['recv','分配'],['give','ウォレット'],['sotai','相対'],['own','自分の支払い'],['out','対象外'],['uns','未仕分け'],['wait','合意待ち・なし']];
+  const ok = t => sOf(t) && (filter==='all' || (filter==='recv'&&t.kind==='recv') || (filter==='give'&&t.kind==='give')
+    || (filter==='sotai'&&(t.kind==='move'||t.kind==='payThird')) || (filter==='out'&&t.kind==='out'&&t.cls==='other') || (filter==='own'&&t.kind==='out'&&t.cls==='self') || (filter==='uns'&&t.kind==='out'&&!t.cls)
+    || (filter==='wait'&&(t.consent==='wait'||t.consent==='no')));
+  let h = txTable();
+  h += `<div class="chips">${F.map(([k,l])=>`<span class="${filter===k?'on':''}" onclick="filter='${k}';shown=10;render()">${l}</span>`).join('')}</div>`;
+  const list = sorted().filter(ok).reverse();
+  const rest = list.length - shown;
+  h += `<div class="card">${list.length? list.slice(0,shown).map(t=>txRow(t,null,'me')).join('') : '<div class="s">ありません</div>'}</div>`;
+  if(rest > 0) h += `<button class="btn sub" style="margin-top:0" onclick="shown+=10;render(true)">さらに10件表示（残り ${rest}件）</button>`;
+  h += `<div class="rate" style="margin:6px 0 12px">新しい順に ${Math.min(shown,list.length)} / ${list.length}件</div>`;
+  return h + `<div class="note">金額が違っていたら［取り消す］で取り消し、「支払い」タブで入れ直します。合意済みは取り消せません。</div>`;
+}
+function sortWout(id, c){ txs.find(t=>t.id===id).cls=c; render(); }
+function cancelTx(id){
+  const t = txs.find(t=>t.id===id);
+  if(!confirm('この支出を取り消しますか？（履歴には「取り消し」として残ります）')) return;
+  t.consent='cancel'; t.hist.push(shortD(new Date())+' 取り消し'); render();
+}
+
+function mePay(){
+  const s = payFlow.step;
+  const steps = ['支払いを円で入れる','支払いの QR を相手に見せる','相手の合意コードを読み取る','合意済み'];
+  let h = `<ol class="steps">${steps.map((x,i)=>`<li class="${i===s?'now':''}">${x}</li>`).join('')}</ol>`;
+  if(s===0){
+    h += `<div class="card"><div class="label">相対での支払い</div>
+      <label class="f">支払先</label><select id="pWho" onchange="payCalc()">${people.filter(p=>!p.self).map(p=>`<option value="${p.id}" ${p.id==='B'?'selected':''}>${p.name}</option>`).join('')}</select>
+      <label class="f">金額（円）</label><input id="pYen" inputmode="numeric" value="2000" oninput="payCalc()">
+      <label class="f">支払日時</label><div class="two"><input id="pDate" type="date" value="2026-10-23" min="2026-10-21" max="2026-10-23" oninput="payCalc()"><input id="pTime" type="time" value="15:30" oninput="payCalc()"></div>
+      <label class="f">内容</label><input id="pMemo" value="お茶代">
+      <div class="calc" id="pCalc"></div>
+      <button class="btn" id="pGo" onclick="payNext()">入れる</button></div>`;
+  } else if(s===1){
+    const t = payFlow.tx;
+    h += `<div class="card center"><div class="label">${pname(t.who)}に読み取ってもらってください</div>${fakeQR(t.id)}
+      <div class="s">${showD(t.d)}　${pname(t.who)}の分　${t.memo}<br>${payLine(t)} → ${f2(usdtOf(t))} USDT</div>
+      <button class="btn" onclick="payFlow.step=2;render()">相手が読み取った → 次へ</button>
+      <button class="btn sub" onclick="payLater()">あとで（LINE で文字を送る）</button></div>`;
+  } else if(s===2){
+    h += `<div class="card center"><div class="label">相手の画面に出た合意コードの QR を読み取ってください</div>
+      <div class="cam">カメラ</div>
+      <button class="btn" onclick="payDone()">読み取った（見本）</button>
+      <button class="btn sub" onclick="payLater()">あとで（LINE で届いた文字を貼る）</button></div>`;
+  } else {
+    const t = payFlow.tx;
+    h += `<div class="card center"><div class="big ${t.consent==='self'?'':'amt-in'}" style="font-size:24px">${t.consent==='self'?'入れました（自分の分）':'合意済み ✓'}</div>
+      <div class="s">${showD(t.d)}　${pname(t.who)}の分　${t.memo}<br>${payLine(t)} → ${f2(usdtOf(t))} USDT</div>
+      ${t.consent==='self'?'':`<div class="label" style="margin-top:10px">合意コード（${pname(t.who)}の端末の鍵で確認済み）</div><div class="code">MEUCIQDx7Kq2…（見本）…3vZ9Lw==</div>`}
+      <button class="btn sub" onclick="payFlow={step:0,tx:null};render()">続けて入れる</button></div>`;
+  }
+  h += `<div class="card"><div class="label">エクセルへの反映</div>
+    <div class="s">ここで入れた支払い・合意コード・取り消しは、PC でファイルに書き出してエクセルに取り込みます（未反映 ${txs.filter(t=>t.id>=100).length}件）</div>
+    <button class="btn sub">エクセル用に書き出す（見本では動きません）</button></div>`;
+  return h;
+}
+function payForm(){
+  const yenV = parseInt(document.getElementById('pYen').value.replace(/[^0-9]/g,''))||0;
+  const [y,m,d] = document.getElementById('pDate').value.split('-');
+  const tm = document.getElementById('pTime').value || '00:00';
+  return {yen:yenV, d:`${y}/${m}/${d} ${tm}`, who:document.getElementById('pWho').value, memo:document.getElementById('pMemo').value||'—'};
+}
+function payCalc(){
+  const f = payForm(), r = rateFor(f.d), box = document.getElementById('pCalc');
+  if(!r.rate){ box.innerHTML='この日のレートは見本にありません（10/21〜10/23 で試してください）'; return; }
+  const before10 = toDate(f.d).getHours() < 10;
+  box.innerHTML = `支払日のレート：${r.key} 10時　1 USDT ＝ ${fp(r.rate)} 円${before10?'<br><span class="rate">10時より前なので前の日のレート</span>':''}
+    <br>${fy(f.yen)} ÷ ${fp(r.rate)} ＝ <b>${f2(floor2(f.yen/r.rate))}</b> USDT <span class="rate">（小数第3位以下は切り捨て）</span>`;
+  document.getElementById('pGo').textContent = people.find(p=>p.id===f.who).self ? '入れる（自分の分なので合意不要）' : '入れて QR を出す';
+}
+function payNext(){
+  const f = payForm();
+  if(!rateFor(f.d).rate || !f.yen) return;
+  const self = people.find(p=>p.id===f.who).self;
+  const t = {id:seq++, kind:'payThird', ...f, consent: self?'self':'wait', hist:[]};
+  txs.push(t);
+  payFlow = {step: self?3:1, tx:t}; render();
+}
+function payDone(){ payFlow.tx.consent='ok'; payFlow.tx.hist.push(shortD(new Date())+' 合意'); payFlow.step=3; render(); }
+function payLater(){ payFlow={step:0,tx:null}; tab='tx'; filter='wait'; render(); }
+
+/* ---------- 相手用（Bさん） ---------- */
+const ME = 'B';
+function youBal(){
+  const x = calc().per[ME], p = people.find(p=>p.id===ME);
+  return `<div class="card"><div class="head"><div><div class="label">${p.name}の残高（ウォレット＋未受領）</div>
+    <div class="hero-row"><div class="big hero">${f2(x.bal)}<span class="unit">USDT</span></div>${eyeBtn()}</div>
+    <div class="yen">${yen(x.bal)}</div></div>${nextDist()}</div>${rateLine()}
+    <div class="bar" style="border:1px solid var(--line);height:12px">${segs(x, [['kh',x.unrec],['kw',x.wallet]])}</div>
+    <div class="rate barcap"><span>残高 ${fu(x.bal)} / 分配累計 ${fu(x.alloc)}</span>
+      <span>（<i class="k kh"></i>未受領：${pc(x.unrec,x.alloc)}、<i class="k kw"></i>ウォレット：${pc(x.wallet,x.alloc)}）</span></div>
+    <details class="fold"><summary>内訳（分配・支出・ウォレット・未受領）</summary>${detail(x, `（比率 ${fp(p.ratio*100)}%）`)}</details></div>
+    
+    ${platform()}
+    <details class="sec"><summary>実績と推移</summary>
+    <div class="card"><div class="label" style="margin-bottom:6px">分配の実績</div>${distChart([ME])}</div>
+    <div class="card"><div class="label" style="margin-bottom:6px">残高の推移</div>${balChart([ME])}</div></details>`;
+}
+function youTx(){
+  const list = sorted().filter(t=>t.kind==='recv' || t.who===ME).reverse();
+  return `<div class="card">${list.map(t=>txRow(t, ME, 'you')).join('')}</div>`;
+}
+function youAgree(){
+  const s = agreeFlow.step;
+  let h = `<div class="card"><div class="key">登録された鍵＝この端末の鍵 ✓</div><div class="rate">鍵の指紋 3F9A-27C1-B804（自分の画面の表示と同じか確かめられます）</div></div>`;
+  if(s===0){
+    const waits = txs.filter(t=>t.who===ME && t.consent==='wait');
+    const nos = txs.filter(t=>t.who===ME && t.consent==='no');
+    h += `<h2>合意待ち</h2>` + (waits.length ? `<div class="card">${waits.map(t=>txRow(t,ME,'you')).join('')}</div>` : `<div class="card s">ありません</div>`);
+    h += `<h2>合意しなかったもの（あとから合意できます）</h2>` + (nos.length ? `<div class="card">${nos.map(t=>txRow(t,ME,'you')).join('')}</div>` : `<div class="card s">ありません</div>`);
+    h += `<div class="card center"><div class="label">その場で支出の QR を見せてもらったとき</div>
+      <div class="cam">カメラ</div>
+      <button class="btn" onclick="agreeRead()" ${waits.length?'':'disabled'}>読み取った（見本）</button>
+      <button class="btn sub">LINE で届いた文字を貼る</button></div>`;
+  } else if(s===1){
+    const t = agreeFlow.tx, r = rateFor(t.d);
+    h += `<div class="card"><div class="label">この支出を確かめてください</div>
+      <div class="big amt-out" style="font-size:28px">${fy(t.yen)}</div>
+      <div class="s" style="margin-top:4px">${showD(t.d)}　${t.memo}　相対で支払い</div>
+      <div class="calc">支払日のレート：${r.key} 10時　1 USDT ＝ ${fp(r.rate)} 円<br>あなたの残高から引く額：<b>${f2(usdtOf(t))}</b> USDT</div>
+      ${t.hist.length?`<div class="rate" style="margin-top:6px">履歴：${t.hist.join(' → ')}</div>`:''}
+      <button class="btn" onclick="agreeDo('ok')">合意する</button>
+      ${t.consent==='wait'?`<button class="btn ng" onclick="agreeDo('no')">合意しない</button>`:''}
+      <button class="btn sub" onclick="agreeFlow={step:0,tx:null};render()">戻る</button></div>`;
+  } else {
+    const t = agreeFlow.tx;
+    h += t.consent==='ok'
+      ? `<div class="card center"><div class="label">この QR を相手に読み取ってもらってください</div>${fakeQR(t.id+7)}
+         <div class="s">合意コード（この端末の鍵で署名。控えはこの端末にも残ります）</div>
+         <button class="btn sub">LINE で送る（文字をコピー）</button>
+         <button class="btn sub" onclick="agreeFlow={step:0,tx:null};render()">終わる</button></div>`
+      : `<div class="card center"><div class="big amt-out" style="font-size:22px">合意しない</div>
+         <div class="s">この支出は「合意なし」として残ります。あとから合意することもできます。</div>
+         <button class="btn sub" onclick="agreeFlow={step:0,tx:null};render()">終わる</button></div>`;
+  }
+  return h;
+}
+function agreeOpen(id){ tab='agree'; agreeFlow={step:1, tx:txs.find(t=>t.id===id)}; render(); }
+function agreeRead(){ const t = txs.filter(t=>t.who===ME && t.consent==='wait').pop(); agreeFlow={step:1, tx:t}; render(); }
+function agreeDo(v){ const t=agreeFlow.tx; t.consent=v; t.hist.push(shortD(new Date())+' '+(v==='ok'?'合意':'合意しない')); agreeFlow.step=2; render(); }
+
+/* ---------- 共通 ---------- */
+function setMode(m){ mode=m; tab='bal'; filter='all'; shown=10; render(); }
+const ICON = {
+  bal:'<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"/>',
+  tx:'<path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',
+  pay:'<circle cx="12" cy="12" r="9"/><path d="M8 7l4 5 4-5M12 12v6M9 13h6M9 16h6"/>',
+  agree:'<circle cx="12" cy="12" r="9"/><path d="M8 7l4 5 4-5M12 12v6M9 13h6M9 16h6"/>',
+};
+function render(keepScroll){
+  const waitMe = txs.filter(t=>t.who===ME && t.consent==='wait').length;
+  const T = mode==='me'
+    ? [['bal','ホーム'],['tx','取引'],['pay','支払い']]
+    : [['bal','ホーム'],['tx','取引'],['agree','受領'+(waitMe?`<span class="badge">${waitMe}</span>`:'')]];
+  document.getElementById('tabs').innerHTML = T.map(([k,l])=>`<div class="${tab===k?'on':''}" onclick="tab='${k}';shown=10;render()"><svg class="tab-ic" viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg><span>${l}</span></div>`).join('');
+  const V = {me:{bal:meBal, tx:meTx, pay:mePay}, you:{bal:youBal, tx:youTx, agree:youAgree}};
+  document.getElementById('view').innerHTML = V[mode][tab]();
+  if(mode==='me' && tab==='pay' && payFlow.step===0) payCalc();
+  hookCharts();
+  if(!keepScroll) window.scrollTo(0,0);
+}
+if(['#tx','#pay'].includes(location.hash)) tab=location.hash.slice(1);
+render();
+if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
 </body>
 </html>
