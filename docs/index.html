@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0a0805">
 <title>DISTRIBUTION Manager</title>
-<meta name="app-version" content="0.9.6">
+<meta name="app-version" content="0.9.7">
 <meta name="apple-mobile-web-app-title" content="DISTRIBUTION Manager">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -246,7 +246,7 @@
 </head>
 <body>
 <header class="appbar">
-  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver" id="status">Version：0.9.6</span>
+  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver" id="status">Version：0.9.7</span>
 </header>
 <div class="wrap">
   <div class="note update" id="updateNote" hidden>新しいバージョンがあります。<button onclick="location.reload()">更新する</button></div>
@@ -1107,6 +1107,7 @@ function setView(){
     h += `<div class="card"><h2>Google ドライブ</h2>
       <div class="kv"><span class="kk">取得先</span><span style="word-break:break-all">${slot ? slot.name : '未設定（［最新データを取得］で選びます）'}</span></div>
       <div class="two"><button class="btn sub" onclick="fetchFromDrive(true)">取得先を選び直す</button><button class="btn sub" onclick="driveUnlink()" ${slot ? '' : 'disabled'}>連携を解除</button></div></div>`;
+    h += exportFolderCard();
     h += inviteCard();
     h += keysCard();
     h += bookCard();
@@ -1133,7 +1134,7 @@ function setView(){
   }
   h += `<div class="card"><h2>この端末</h2>
     <button class="btn sub" onclick="forgetPass()" ${localStorage.getItem('dist-manager-pass') ? '' : 'disabled'}>覚えた合言葉を消す</button></div>`;
-  h += `<div class="card"><h2>このアプリについて</h2><div>バージョン：<b>0.9.6</b></div>
+  h += `<div class="card"><h2>このアプリについて</h2><div>バージョン：<b>0.9.7</b></div>
     <button class="btn sub" onclick="checkUpdate(this)">更新を確認</button></div>`;
   return h;
 }
@@ -1340,10 +1341,55 @@ async function exportToDrive(){
     const text = await makeExport();
     if(!text) return;
     const name = exportName();
-    await driveSave(name, text, true);   // 同じ名前のファイルを上書き
+    let folder = loadJson('dist-manager-exportfolder');   // 相対ファイル連携フォルダ（設定タブ）。なければ「DISTRIBUTION バックアップ」
+    try {
+      await driveSave(name, text, true, folder && folder.id);   // 同じ名前のファイルを上書き
+    } catch(e){
+      if(!folder || !/アクセスできません/.test(e.message)) throw e;
+      // このアプリからまだフォルダが見えない（権限は「このアプリで選んだもの」だけ）→ 選んで許可してもらい、もう一度置く
+      if(!confirm('相対ファイル連携フォルダ（' + (folder.name || 'リンクで設定したフォルダ') + '）に、このアプリからまだ置けません。\n\n次の画面で同じフォルダを選ぶと、置けるようになります。選びますか？')) return;
+      const f = await pickExportFolder();
+      if(!f) return;
+      folder = f;
+      await driveSave(name, text, true, folder.id);
+    }
     exportDone('Google ドライブ', name);
-    alert('Google ドライブの「' + BK_FOLDER + '」に ' + name + ' を保存しました。PC でブックの表紙［Manager の書き出しを取り込む］から取り込んでください');
+    alert('Google ドライブの「' + (folder ? folder.name || '相対ファイル連携フォルダ' : BK_FOLDER) + '」に ' + name + ' を保存しました。PC でブックの表紙の③から取り込んでください');
   } catch(e){ alert(e.message); }
+}
+// 相対ファイル連携フォルダ（設定タブ）：書き出しを置くドライブのフォルダ。{id, name}
+const folderIdOf = t => { const m = String(t || '').match(/\/folders\/([A-Za-z0-9_-]{10,})/) || String(t || '').match(/[?&]id=([A-Za-z0-9_-]{10,})/) || String(t || '').trim().match(/^([A-Za-z0-9_-]{20,})$/); return m ? m[1] : null; };
+async function saveExportFolder(){
+  const link = document.getElementById('xfIn').value, id = folderIdOf(link);
+  if(!id) return alert('フォルダのリンクの形ではありません。ドライブでフォルダを開き、［リンクをコピー］で取ったリンク（…/folders/…）を貼ってください');
+  const auth = Drive.authorizeNow();
+  try {
+    if(auth) await auth;
+    let name = '';
+    try { name = (await (await Drive.api(G_API + '/' + encodeURIComponent(id) + '?fields=id,name,mimeType&supportsAllDrives=true')).json()).name; } catch(e){ /* まだ見えない：保存してから、選んで許可してもらう */ }
+    saveJson('dist-manager-exportfolder', {id, name});
+    render(true);
+    if(name) toast('相対ファイル連携フォルダを「' + name + '」にしました');
+    else if(confirm('フォルダを保存しました。ただ、このアプリからまだこのフォルダが見えません。\n\n次の画面で同じフォルダを選ぶと、ファイルを置けるようになります。選びますか？')) await pickExportFolder();
+  } catch(e){ alert(e.message); }
+}
+async function pickExportFolder(){
+  const f = await Drive.pickFolder('相対ファイル連携フォルダを選んでください（書き出しを置くフォルダ）');
+  if(!f) return null;
+  saveJson('dist-manager-exportfolder', f);
+  render(true);
+  toast('相対ファイル連携フォルダを「' + f.name + '」にしました');
+  return f;
+}
+function clearExportFolder(){ try { localStorage.removeItem('dist-manager-exportfolder'); } catch(e){} render(true); toast('相対ファイル連携フォルダをやめました（「' + BK_FOLDER + '」に置きます）'); }
+function exportFolderCard(){
+  const f = loadJson('dist-manager-exportfolder');
+  return `<div class="card"><h2>相対ファイル連携フォルダ</h2>
+    <div class="rate">［エクセル用に書き出す］→［Google ドライブに保存］で、相対の支払いの書き出し（${exportName()}）を置くフォルダです。ドライブでフォルダを開き、［リンクをコピー］で取ったリンクを貼って保存してください。PC のブックの「Manager の書き出しの場所」には、同期されたこのフォルダの中のファイルを指定します。空なら「${BK_FOLDER}」に置きます</div>
+    <div class="kv" style="margin-top:6px"><span class="kk">今の連携先</span><span style="word-break:break-all">${f ? esc(f.name || '（名前はまだ見えません）') + '<br><span class="rate">' + f.id + '</span>' : '未設定（「' + BK_FOLDER + '」）'}</span></div>
+    <label class="f">フォルダのリンク</label><input id="xfIn" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="https://drive.google.com/drive/folders/…">
+    <button class="btn" onclick="saveExportFolder()">保存</button>
+    <div class="two"><button class="btn sub" onclick="pickExportFolder().catch(e => alert(e.message))">フォルダを選んで許可</button><button class="btn sub" onclick="clearExportFolder()" ${f ? '' : 'disabled'}>連携をやめる</button></div></div>`;
 }
 async function exportDownload(){
   try {
@@ -1446,6 +1492,18 @@ const Drive = (() => {
         .build().setVisible(true);
     });
   }
+  // フォルダを選ぶ（選んだフォルダに、このアプリがファイルを置けるようになる）。{id, name}、やめたら null
+  async function pickFolder(title){
+    const accessToken = await getToken();
+    return new Promise(resolve => {
+      const mine = new google.picker.DocsView(google.picker.ViewId.FOLDERS).setIncludeFolders(true).setSelectFolderEnabled(true).setMode(google.picker.DocsViewMode.LIST);
+      const shared = new google.picker.DocsView(google.picker.ViewId.FOLDERS).setIncludeFolders(true).setSelectFolderEnabled(true).setOwnedByMe(false).setMode(google.picker.DocsViewMode.LIST);
+      new google.picker.PickerBuilder().setOAuthToken(accessToken).setDeveloperKey(GOOGLE.apiKey).setAppId(GOOGLE.appId).setLocale('ja')
+        .setTitle(title).addView(mine).addView(shared).enableFeature(google.picker.Feature.SUPPORT_DRIVES)
+        .setCallback(d => { if(d.action === google.picker.Action.PICKED) resolve({id: d.docs[0].id, name: d.docs[0].name}); else if(d.action === google.picker.Action.CANCEL) resolve(null); })
+        .build().setVisible(true);
+    });
+  }
   async function api(url, opt = {}){
     const res = await fetch(url, {...opt, headers: {...(opt.headers || {}), Authorization: 'Bearer ' + (await getToken())}});
     if(res.status === 401){ token = null; throw new Error('ログインの有効期限が切れました。もう一度押してください。'); }
@@ -1460,7 +1518,7 @@ const Drive = (() => {
     return {meta, text};
   }
   function signOut(){ if(token && window.google) google.accounts.oauth2.revoke(token.value, () => {}); token = null; }
-  return {ensureLoaded, getToken, authorizeNow, preload, pick, api, download, signOut};
+  return {ensureLoaded, getToken, authorizeNow, preload, pick, pickFolder, api, download, signOut};
 })();
 // バックアップのフォルダ・ファイルの操作（ログインは Drive の部品で）
 async function gfetch(url, opt = {}){
@@ -1468,7 +1526,7 @@ async function gfetch(url, opt = {}){
 }
 const gq = s => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 async function gfind(q){
-  const j = await (await gfetch(G_API + '?q=' + encodeURIComponent(q) + '&spaces=drive&orderBy=modifiedTime%20desc&fields=files(id,name,modifiedTime)')).json();
+  const j = await (await gfetch(G_API + '?q=' + encodeURIComponent(q) + '&spaces=drive&orderBy=modifiedTime%20desc&fields=files(id,name,modifiedTime)&supportsAllDrives=true&includeItemsFromAllDrives=true')).json();
   return (j.files || [])[0] || null;
 }
 async function gfolder(create){
@@ -1476,13 +1534,14 @@ async function gfolder(create){
   if(f || !create) return f;
   return (await gfetch(G_API + '?fields=id', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name: BK_FOLDER, mimeType:'application/vnd.google-apps.folder'})})).json();
 }
-// 「DISTRIBUTION バックアップ」フォルダにファイルを保存する。replace：同じ名前のファイルがあれば上書き
-async function driveSave(name, text, replace){
-  const folder = await gfolder(true);
-  const old = replace ? await gfind(`name='${gq(name)}' and '${folder.id}' in parents and trashed=false`) : null;
+// ドライブにファイルを保存する。folderId がなければ「DISTRIBUTION バックアップ」フォルダ。replace：同じ名前のファイルがあれば上書き
+// 共有ドライブのフォルダにも置けるよう supportsAllDrives を付ける
+async function driveSave(name, text, replace, folderId){
+  const fid = folderId || (await gfolder(true)).id;
+  const old = replace ? await gfind(`name='${gq(name)}' and '${fid}' in parents and trashed=false`) : null;
   const bd = 'dist' + Date.now();
-  const body = `--${bd}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(old ? {} : {name, parents: [folder.id]})}\r\n--${bd}\r\nContent-Type: application/json\r\n\r\n${text}\r\n--${bd}--`;
-  await gfetch((old ? G_UP + '/' + old.id : G_UP) + '?uploadType=multipart&fields=id', {method: old ? 'PATCH' : 'POST', headers: {'Content-Type': 'multipart/related; boundary=' + bd}, body});
+  const body = `--${bd}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(old ? {} : {name, parents: [fid]})}\r\n--${bd}\r\nContent-Type: application/json\r\n\r\n${text}\r\n--${bd}--`;
+  await gfetch((old ? G_UP + '/' + old.id : G_UP) + '?uploadType=multipart&fields=id&supportsAllDrives=true', {method: old ? 'PATCH' : 'POST', headers: {'Content-Type': 'multipart/related; boundary=' + bd}, body});
 }
 async function backupToDrive(){
   try {
@@ -1509,7 +1568,7 @@ async function restoreFromDrive(){
 async function newerVersion(){
   const html = await (await fetch('./?t=' + Date.now(), {cache: 'no-store'})).text();
   const latest = (html.match(/name="app-version" content="([^"]+)"/) || [])[1];
-  return latest && latest !== '0.9.6' ? latest : null;
+  return latest && latest !== '0.9.7' ? latest : null;
 }
 // 新しい版の Service Worker に入れ替わるまで待つ（最大 ms）。入れ替わったら true
 function waitForNewWorker(reg, ms){
@@ -1548,7 +1607,7 @@ async function checkUpdate(btn){
   try {
     const latest = await newerVersion();
     if(latest){ if(confirm('新しいバージョン（' + latest + '）があります。更新しますか？')) await applyUpdate(); }
-    else alert('最新のバージョンです（0.9.6）');
+    else alert('最新のバージョンです（0.9.7）');
   } catch(e){ alert('更新を確認できませんでした（通信を確認してください）'); }
   finally { btn.disabled = false; }
 }
@@ -1628,7 +1687,7 @@ function setBase(v){
 }
 function showStatus(){
   const st = document.getElementById('status');
-  st.textContent = 'Version：0.9.6';
+  st.textContent = 'Version：0.9.7';
   st.title = DATA ? 'データの作成日時：' + DATA.generatedAt : 'データはまだ読み込んでいません';
 }
 function showNote(){
