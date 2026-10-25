@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0a0805">
 <title>DISTRIBUTION Manager</title>
-<meta name="app-version" content="0.9.3">
+<meta name="app-version" content="0.9.4">
 <meta name="apple-mobile-web-app-title" content="DISTRIBUTION Manager">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -246,7 +246,7 @@
 </head>
 <body>
 <header class="appbar">
-  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver" id="status">Version：0.9.3</span>
+  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver" id="status">Version：0.9.4</span>
 </header>
 <div class="wrap">
   <div class="note update" id="updateNote" hidden>新しいバージョンがあります。<button onclick="location.reload()">更新する</button></div>
@@ -1110,11 +1110,15 @@ function setView(){
       <div class="rate">この日を「今日」とみなして、その日までの取引で表示します（プラットフォーム収益・残高・グラフ・次回分配予定）。本番のデータでは出ません</div>
       <div class="two" style="margin-top:8px"><input type="date" id="baseIn" value="${BASE}"><button class="btn sub" style="margin-top:0" onclick="setBase(document.getElementById('baseIn').value)">この日にする</button></div>
       <button class="btn sub" onclick="setBase('')" ${BASE ? '' : 'disabled'}>今日に戻す</button></div>`;
+    h += `<div class="card"><h2>テストのデータを消す（試行データのみ）</h2>
+      <div class="rate">本番を始める前に、テストで使ったものをこの端末から消します。${SCOPE === 'manager'
+        ? '消えるもの：読み込んだデータ、まだエクセルに取り込んでいない支払い・合意、取得先、Agent の招待、基準日。残るもの：表示名・アドレスの名前・覚えた合言葉'
+        : '消えるもの：読み込んだデータ、合意コードの控え、ウォレットの仕分け、受け取り先（招待）、基準日。残るもの：<b>この端末の鍵</b>（本番でもそのまま使えます）、表示名・アドレスの名前・覚えた合言葉'}。本番のデータを読み込んでいるときは出ません</div>
+      <button class="btn ng" onclick="clearData()">テストのデータを消す</button></div>`;
   }
   h += `<div class="card"><h2>この端末</h2>
-    <button class="btn sub" onclick="forgetPass()" ${localStorage.getItem('dist-manager-pass') ? '' : 'disabled'}>覚えた合言葉を消す</button>
-    <button class="btn ng" onclick="clearData()" ${DATA ? '' : 'disabled'}>データを消す</button></div>`;
-  h += `<div class="card"><h2>このアプリについて</h2><div>バージョン：<b>0.9.3</b></div>
+    <button class="btn sub" onclick="forgetPass()" ${localStorage.getItem('dist-manager-pass') ? '' : 'disabled'}>覚えた合言葉を消す</button></div>`;
+  h += `<div class="card"><h2>このアプリについて</h2><div>バージョン：<b>0.9.4</b></div>
     <button class="btn sub" onclick="checkUpdate(this)">更新を確認</button></div>`;
   return h;
 }
@@ -1484,7 +1488,7 @@ async function restoreFromDrive(){
 async function newerVersion(){
   const html = await (await fetch('./?t=' + Date.now(), {cache: 'no-store'})).text();
   const latest = (html.match(/name="app-version" content="([^"]+)"/) || [])[1];
-  return latest && latest !== '0.9.3' ? latest : null;
+  return latest && latest !== '0.9.4' ? latest : null;
 }
 // 新しい版の Service Worker に入れ替わるまで待つ（最大 ms）。入れ替わったら true
 function waitForNewWorker(reg, ms){
@@ -1523,17 +1527,23 @@ async function checkUpdate(btn){
   try {
     const latest = await newerVersion();
     if(latest){ if(confirm('新しいバージョン（' + latest + '）があります。更新しますか？')) await applyUpdate(); }
-    else alert('最新のバージョンです（0.9.3）');
+    else alert('最新のバージョンです（0.9.4）');
   } catch(e){ alert('更新を確認できませんでした（通信を確認してください）'); }
   finally { btn.disabled = false; }
 }
 function forgetPass(){ try { localStorage.removeItem('dist-manager-pass'); } catch(e){} render(true); alert('覚えた合言葉を消しました'); }
+// テストのデータを消す（試行データを読み込んでいるときだけ。本番のデータは消せない）
+// 受け取り先（Agent の招待・Manager の取得先）も忘れる：残すと、テストのファイルが更新されたときに自動で読み込み直してしまうため
+// Agent は合意コードの控え・ウォレットの仕分けも消す。端末の鍵（IndexedDB）は残す（本番でもそのまま使う）
 function clearData(){
-  if(!confirm('この端末のデータを消しますか？（データファイルを読み込めば、また出せます）')) return;
-  if(SCOPE === 'manager' && (LOCAL.added.length || Object.keys(LOCAL.changes).length) && !confirm('まだエクセルに取り込んでいない支払いの入力も消えます。よいですか？（バックアップがあれば戻せます）')) return;
-  try { ['data','src','local','dirty'].forEach(k => localStorage.removeItem('dist-manager-' + k)); } catch(e){}
-  LOCAL = {added: [], changes: {}};
+  if(!DATA || !DATA.trial) return;
+  if(!confirm('この端末のテストのデータを消しますか？（本番を始める前の片付け。テストのデータファイルを読み込めば、また出せます）')) return;
+  if(SCOPE === 'manager' && (LOCAL.added.length || Object.keys(LOCAL.changes).length) && !confirm('まだエクセルに取り込んでいない支払いの入力も消えます。よいですか？（要るときは、先に［エクセル用に書き出す］かバックアップを）')) return;
+  const keys = ['data', 'src', 'local', 'dirty', 'drive', 'base', 'export'].concat(SCOPE === 'manager' ? ['invites'] : ['acks', 'sort']);
+  try { keys.forEach(k => localStorage.removeItem('dist-manager-' + k)); } catch(e){}
+  LOCAL = {added: [], changes: {}}; ACKS = []; BASE = '';
   DATA = null; META = null; people = []; SOTAI = []; txs = []; render();
+  alert('テストのデータを消しました。本番のデータファイルを読み込んでください（' + (SCOPE === 'manager' ? '［最新データを取得］で dist-manager.json を選ぶ' : '本番の招待リンクを開くか、［招待コードを入れる］') + '）');
 }
 // データファイルの形 → 画面の作りに合わせた形
 const shortAddr = a => a && a.length > 14 ? a.slice(0,6) + '…' + a.slice(-4) : (a || '');
@@ -1594,7 +1604,7 @@ function setBase(v){
 }
 function showStatus(){
   const st = document.getElementById('status');
-  st.textContent = 'Version：0.9.3';
+  st.textContent = 'Version：0.9.4';
   st.title = DATA ? 'データの作成日時：' + DATA.generatedAt : 'データはまだ読み込んでいません';
 }
 function showNote(){
