@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0a0805">
 <title>DISTRIBUTION Manager</title>
-<meta name="app-version" content="0.9.4">
+<meta name="app-version" content="0.9.5">
 <meta name="apple-mobile-web-app-title" content="DISTRIBUTION Manager">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -246,7 +246,7 @@
 </head>
 <body>
 <header class="appbar">
-  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver" id="status">Version：0.9.4</span>
+  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver" id="status">Version：0.9.5</span>
 </header>
 <div class="wrap">
   <div class="note update" id="updateNote" hidden>新しいバージョンがあります。<button onclick="location.reload()">更新する</button></div>
@@ -319,6 +319,17 @@ let agreeFlow = {step:0, pay:null};
 let seq = 100;
 // Agent：出した合意コードの控え（{pay, d, at, code, made}）。端末の中だけ
 let ACKS = [];
+// Manager：Agent に伝える合言葉の控え（{test: {記号: 合言葉}, prod: {…}}）。端末の中とバックアップだけに置く。読み込んでいるデータ（テスト／本番）のほうだけ出す
+let PASSMEMO = {test: {}, prod: {}};
+try { PASSMEMO = Object.assign({test: {}, prod: {}}, JSON.parse(localStorage.getItem('dist-manager-agentpass') || '{}')); } catch(e){}
+const memoSide = () => DATA && DATA.trial ? 'test' : 'prod';
+// テストの合言葉を消す：覚えた合言葉がテストのもの（passmode＝test）なら消す（all：どちらでも消す）。Manager は Agent のテストの控えも消す
+function forgetTestPass(all){
+  try {
+    if(all || localStorage.getItem('dist-manager-passmode') === 'test'){ localStorage.removeItem('dist-manager-pass'); localStorage.removeItem('dist-manager-passmode'); }
+  } catch(e){}
+  if(SCOPE === 'manager' && Object.keys(PASSMEMO.test).length){ PASSMEMO.test = {}; saveJson('dist-manager-agentpass', PASSMEMO); }
+}
 // 表示名：この端末の中だけで変える名前（{記号: 名前}）。空ならデータ（エクセルの「人」）の名前
 let NAMES = {};
 try { NAMES = JSON.parse(localStorage.getItem('dist-manager-names') || '{}'); } catch(e){}
@@ -857,7 +868,7 @@ function mePay(){
   }
   const n = exportCount(), ex = loadJson('dist-manager-export');
   h += `<div class="card"><div class="label">エクセルへの反映（未反映 ${n}件）</div>
-    <div class="rate" style="margin-top:4px;line-height:1.6">ここで入れた支払い・合意・取り消しを 1 つのファイルに書き出し、PC でブックの表紙の［Manager の書き出しを取り込む］から取り込みます。合言葉はデータファイルと同じです。取り込んだあと［データファイルを作る］で作ったデータを読み込むと、この端末の未反映から外れます</div>
+    <div class="rate" style="margin-top:4px;line-height:1.6">ここで入れた支払い・合意・取り消しを 1 つのファイル（<b>${exportName()}</b>。ドライブでは同じ名前のファイルを上書き）に書き出し、PC でブックの表紙の［${DATA && DATA.trial ? '③ テストに取り込む' : '③ Manager の書き出しを取り込む'}］から取り込みます。合言葉はデータファイルと同じです。取り込んだあと［${DATA && DATA.trial ? '④ テストのデータファイルを作る' : '④ データファイルを作る'}］で作ったデータを読み込むと、この端末の未反映から外れます</div>
     ${ex ? `<div class="kv" style="margin-top:6px"><span class="kk">前回の書き出し</span><span>${ex.at}（${ex.where}・${ex.n}件）</span></div>` : ''}
     <button class="btn" onclick="exportToDrive()" ${n ? '' : 'disabled'}>Google ドライブに保存</button>
     <div class="two"><button class="btn sub" onclick="exportDownload()" ${n ? '' : 'disabled'}>ダウンロードに保存</button><button class="btn sub" onclick="exportShare()" ${n ? '' : 'disabled'}>共有で保存先を選ぶ</button></div></div>`;
@@ -1112,13 +1123,13 @@ function setView(){
       <button class="btn sub" onclick="setBase('')" ${BASE ? '' : 'disabled'}>今日に戻す</button></div>`;
     h += `<div class="card"><h2>テストのデータを消す（試行データのみ）</h2>
       <div class="rate">本番を始める前に、テストで使ったものをこの端末から消します。${SCOPE === 'manager'
-        ? '消えるもの：読み込んだデータ、まだエクセルに取り込んでいない支払い・合意、取得先、Agent の招待、基準日。残るもの：表示名・アドレスの名前・覚えた合言葉'
-        : '消えるもの：読み込んだデータ、合意コードの控え、ウォレットの仕分け、受け取り先（招待）、基準日。残るもの：<b>この端末の鍵</b>（本番でもそのまま使えます）、表示名・アドレスの名前・覚えた合言葉'}。本番のデータを読み込んでいるときは出ません</div>
+        ? '消えるもの：読み込んだデータ、まだエクセルに取り込んでいない支払い・合意、取得先、Agent の招待、Agent の合言葉の控え（テスト）、覚えた合言葉（テスト）、基準日。残るもの：表示名・アドレスの名前・Agent の合言葉の控え（本番）'
+        : '消えるもの：読み込んだデータ、合意コードの控え、ウォレットの仕分け、受け取り先（招待）、覚えた合言葉（テスト）、基準日。残るもの：<b>この端末の鍵</b>（本番でもそのまま使えます）、表示名・アドレスの名前'}。本番のデータを読み込んでいるときは出ません</div>
       <button class="btn ng" onclick="clearData()">テストのデータを消す</button></div>`;
   }
   h += `<div class="card"><h2>この端末</h2>
     <button class="btn sub" onclick="forgetPass()" ${localStorage.getItem('dist-manager-pass') ? '' : 'disabled'}>覚えた合言葉を消す</button></div>`;
-  h += `<div class="card"><h2>このアプリについて</h2><div>バージョン：<b>0.9.4</b></div>
+  h += `<div class="card"><h2>このアプリについて</h2><div>バージョン：<b>0.9.5</b></div>
     <button class="btn sub" onclick="checkUpdate(this)">更新を確認</button></div>`;
   return h;
 }
@@ -1156,6 +1167,9 @@ async function importText(text, fileName, opt = {}){
     const d = await decryptIfNeeded(json, opt.noAsk);
     if(!d) return false;   // 合言葉の入力をやめた（noAsk のときは、覚えた合言葉で開けなかった）
     validate(d);
+    // 覚えた合言葉がこのデータを開いたなら、そのデータの側（テスト／本番）として記録する。本番を読み込んだら、テストの合言葉・控えが残っていれば消す
+    try { if(localStorage.getItem('dist-manager-pass') && localStorage.getItem('dist-manager-pass') === PASS) localStorage.setItem('dist-manager-passmode', d.trial ? 'test' : 'prod'); } catch(e){}
+    if(!d.trial) forgetTestPass(false);
     const meta = {fileName, importedAt: nowText()};
     if(!saveJson('dist-manager-data', {data: d, meta})) throw new Error('端末に保存できませんでした（空き容量を確かめてください）');
     saveJson('dist-manager-src', json.format === 'dist-data-enc' ? json : null);
@@ -1266,7 +1280,7 @@ async function makeBackup(){
   if(!src) throw new Error('暗号化されたデータファイルを読み込んでから、バックアップを取ってください');
   const pass = await backupPass(src);
   if(!pass) return null;
-  return JSON.stringify(await encryptData({format:'dist-backup', version:1, scope:SCOPE, createdAt:nowText(), src, meta:META, local:LOCAL, book:BOOK, names:NAMES}, pass));
+  return JSON.stringify(await encryptData({format:'dist-backup', version:1, scope:SCOPE, createdAt:nowText(), src, meta:META, local:LOCAL, book:BOOK, names:NAMES, agentpass:PASSMEMO}, pass));
 }
 async function restoreBackup(json){
   if(json.version > 1) throw new Error('このバックアップは新しい版のアプリ用です。アプリを開き直して更新してから、もう一度読み込んでください');
@@ -1287,6 +1301,7 @@ async function restoreBackup(json){
   LOCAL = b.local || {added: [], changes: {}};
   if(b.book){ BOOK = b.book; saveBook(); }
   if(b.names){ NAMES = b.names; saveJson('dist-manager-names', NAMES); }
+  if(b.agentpass){ PASSMEMO = Object.assign({test: {}, prod: {}}, b.agentpass); saveJson('dist-manager-agentpass', PASSMEMO); }
   saveJson('dist-manager-local', LOCAL);
   saveJson('dist-manager-src', b.src);
   saveJson('dist-manager-data', {data: d, meta: b.meta});
@@ -1301,7 +1316,9 @@ async function restoreBackup(json){
 // 1 つのファイルにする。合言葉はデータファイルと同じ（PC のプログラムが Manager 用の合言葉で開く）。ブックの表紙［Manager の書き出しを取り込む］で取り込む
 // 取り込んだ支払いは、次のデータファイルを読み込むと、この端末から自動で外れる
 const exportCount = () => LOCAL.added.length + Object.keys(LOCAL.changes).length;
-const exportName = () => { const d = new Date(); return `DISTRIBUTION_excel_${isoDay(d).replace(/-/g,'')}-${pad2(d.getHours())}${pad2(d.getMinutes())}.json`; };
+// 名前は固定（本番：DISTRIBUTION_excel.json、テスト：DISTRIBUTION_excel_test.json）。ドライブは上書きするので、PC のブックの③が同じ場所を読める
+// 書き出しには、まだ取り込んでいない分が毎回すべて入るので、いちばん新しいファイル 1 つで足りる（同じ中身を 2 回取り込んでも二重にならない）
+const exportName = () => DATA && DATA.trial ? 'DISTRIBUTION_excel_test.json' : 'DISTRIBUTION_excel.json';
 async function makeExport(){
   if(!exportCount()) throw new Error('エクセルに取り込んでいない支払い・合意はありません');
   const src = loadJson('dist-manager-src');
@@ -1309,7 +1326,7 @@ async function makeExport(){
   const pass = await backupPass(src);
   if(!pass) return null;
   const changes = Object.entries(LOCAL.changes).map(([id, c]) => ({id, status: c.status, code: c.code || '', added: c.added}));
-  return JSON.stringify(await encryptData({format:'dist-export', version:1, createdAt: nowText(), dataGeneratedAt: DATA.generatedAt, added: LOCAL.added, changes}, pass, 'dist-export-enc'));
+  return JSON.stringify(await encryptData({format:'dist-export', version:1, trial: !!DATA.trial, createdAt: nowText(), dataGeneratedAt: DATA.generatedAt, added: LOCAL.added, changes}, pass, 'dist-export-enc'));
 }
 function exportDone(where, name){ saveJson('dist-manager-export', {at: nowText(), where, name, n: exportCount()}); render(true); }
 async function exportToDrive(){
@@ -1319,7 +1336,7 @@ async function exportToDrive(){
     const text = await makeExport();
     if(!text) return;
     const name = exportName();
-    await driveSave(name, text, false);
+    await driveSave(name, text, true);   // 同じ名前のファイルを上書き
     exportDone('Google ドライブ', name);
     alert('Google ドライブの「' + BK_FOLDER + '」に ' + name + ' を保存しました。PC でブックの表紙［Manager の書き出しを取り込む］から取り込んでください');
   } catch(e){ alert(e.message); }
@@ -1488,7 +1505,7 @@ async function restoreFromDrive(){
 async function newerVersion(){
   const html = await (await fetch('./?t=' + Date.now(), {cache: 'no-store'})).text();
   const latest = (html.match(/name="app-version" content="([^"]+)"/) || [])[1];
-  return latest && latest !== '0.9.4' ? latest : null;
+  return latest && latest !== '0.9.5' ? latest : null;
 }
 // 新しい版の Service Worker に入れ替わるまで待つ（最大 ms）。入れ替わったら true
 function waitForNewWorker(reg, ms){
@@ -1527,11 +1544,11 @@ async function checkUpdate(btn){
   try {
     const latest = await newerVersion();
     if(latest){ if(confirm('新しいバージョン（' + latest + '）があります。更新しますか？')) await applyUpdate(); }
-    else alert('最新のバージョンです（0.9.4）');
+    else alert('最新のバージョンです（0.9.5）');
   } catch(e){ alert('更新を確認できませんでした（通信を確認してください）'); }
   finally { btn.disabled = false; }
 }
-function forgetPass(){ try { localStorage.removeItem('dist-manager-pass'); } catch(e){} render(true); alert('覚えた合言葉を消しました'); }
+function forgetPass(){ try { localStorage.removeItem('dist-manager-pass'); localStorage.removeItem('dist-manager-passmode'); } catch(e){} render(true); alert('覚えた合言葉を消しました'); }
 // テストのデータを消す（試行データを読み込んでいるときだけ。本番のデータは消せない）
 // 受け取り先（Agent の招待・Manager の取得先）も忘れる：残すと、テストのファイルが更新されたときに自動で読み込み直してしまうため
 // Agent は合意コードの控え・ウォレットの仕分けも消す。端末の鍵（IndexedDB）は残す（本番でもそのまま使う）
@@ -1541,6 +1558,7 @@ function clearData(){
   if(SCOPE === 'manager' && (LOCAL.added.length || Object.keys(LOCAL.changes).length) && !confirm('まだエクセルに取り込んでいない支払いの入力も消えます。よいですか？（要るときは、先に［エクセル用に書き出す］かバックアップを）')) return;
   const keys = ['data', 'src', 'local', 'dirty', 'drive', 'base', 'export'].concat(SCOPE === 'manager' ? ['invites'] : ['acks', 'sort']);
   try { keys.forEach(k => localStorage.removeItem('dist-manager-' + k)); } catch(e){}
+  forgetTestPass(true);   // 試行データを読み込んでいたので、覚えた合言葉はテストのもの
   LOCAL = {added: [], changes: {}}; ACKS = []; BASE = '';
   DATA = null; META = null; people = []; SOTAI = []; txs = []; render();
   alert('テストのデータを消しました。本番のデータファイルを読み込んでください（' + (SCOPE === 'manager' ? '［最新データを取得］で dist-manager.json を選ぶ' : '本番の招待リンクを開くか、［招待コードを入れる］') + '）');
@@ -1604,7 +1622,7 @@ function setBase(v){
 }
 function showStatus(){
   const st = document.getElementById('status');
-  st.textContent = 'Version：0.9.4';
+  st.textContent = 'Version：0.9.5';
   st.title = DATA ? 'データの作成日時：' + DATA.generatedAt : 'データはまだ読み込んでいません';
 }
 function showNote(){
@@ -1725,7 +1743,27 @@ function inviteCard(){
       <button class="btn sub" onclick="copyText('${id}','招待コードをコピーしました')">コードをコピー</button>
       <button class="btn sub" onclick="forgetInvite('${p.id}')">この端末から消す</button></details>`;
   }
+  // 合言葉の控え（読み込んでいるデータの側だけ）
+  const side = memoSide(), memo = PASSMEMO[side];
+  h += `<div class="label" style="margin-top:12px">Agent の合言葉の控え（${side === 'test' ? 'テスト' : '本番'}）</div>
+    <div class="rate">招待と一緒に伝える合言葉を、この端末に控えておけます（${side === 'test' ? 'テストのデータを読み込んでいるので、テストの控えだけ出しています' : '本番のデータを読み込んでいるので、本番の控えだけ出しています'}）。バックアップにも入ります</div>`;
+  for(const p of people.filter(p => !p.self)){
+    h += `<label class="f">${esc(p.name)}（${p.id}）</label>
+      <div class="two"><input id="pm_${p.id}" type="password" autocomplete="off" spellcheck="false" value="${esc(memo[p.id] || '')}" placeholder="未登録">
+      <button class="btn sub" style="margin-top:0;flex:0 0 auto;width:auto;padding:9px 12px" onclick="const i=document.getElementById('pm_${p.id}'); i.type = i.type === 'password' ? 'text' : 'password'">見る</button>
+      <button class="btn sub" style="margin-top:0;flex:0 0 auto;width:auto;padding:9px 12px" onclick="copyText(document.getElementById('pm_${p.id}').value, '合言葉をコピーしました')" ${memo[p.id] ? '' : 'disabled'}>コピー</button></div>`;
+  }
+  h += `<button class="btn sub" onclick="savePassMemo()">合言葉の控えを保存</button>`;
   return h + `</div>`;
+}
+function savePassMemo(){
+  const side = memoSide();
+  for(const p of people.filter(p => !p.self)){
+    const v = document.getElementById('pm_' + p.id).value;
+    if(v) PASSMEMO[side][p.id] = v; else delete PASSMEMO[side][p.id];
+  }
+  saveJson('dist-manager-agentpass', PASSMEMO); markDirty(); render(true);
+  toast('合言葉の控え（' + (side === 'test' ? 'テスト' : '本番') + '）を保存しました');
 }
 
 // ---- Agent：受け取り（dist-agent-drive ＝ {id, name, md5, checkedAt}） ----
