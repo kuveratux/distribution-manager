@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0a0805">
 <title>DISTRIBUTION Manager</title>
-<meta name="app-version" content="0.9.12">
+<meta name="app-version" content="0.9.13">
 <meta name="apple-mobile-web-app-title" content="DISTRIBUTION Manager">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -163,7 +163,10 @@
   details.fold>summary::before{content:'▸';color:var(--gold-2);font-size:25px;line-height:1;display:inline-block;width:1em;vertical-align:-4px}   /* たたみの印は見える大きさに */
   details.fold[open]>summary::before{content:'▾'}
   /* 受取合意用の鍵（Agent の受領タブ）：題名は「合意待ち」と同じ、文字は残高の円の目安と同じ 14px */
-  .keycard h2.ktitle{margin:0 0 8px;display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+  .keycard h2.ktitle{margin:0;display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+  details.keyfold>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px}   /* 題名を押すと開く */
+  details.keyfold>summary::before{content:'▸';color:var(--gold-2);font-size:25px;line-height:1}
+  details.keyfold[open]>summary::before{content:'▾'}
   .keycard .rate,.keycard .kv,.keycard .key,.keycard details.fold>summary{font-size:14px}
   .keycard .rate{line-height:1.6}
   /* 折り畳み：外側の枠の中に題名と内容を入れる */
@@ -180,7 +183,7 @@
   details.sec .card:last-child{margin-bottom:0}
   /* 内側の枠なし（プラットフォーム収益） */
   details.sec .plain{padding:0 4px;margin-top:-10px}  /* 題名の下の余白を打ち消し、1行目も線と線の真ん中に */
-  details.sec>summary::before{content:'▸';color:var(--gold-2)}
+  details.sec>summary::before{content:'▸';color:var(--gold-2);font-size:25px;line-height:1}   /* たたみの印とそろえる */
   details.sec[open]>summary::before{content:'▾'}
   details summary::-webkit-details-marker{display:none}
   table.sum{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
@@ -250,7 +253,7 @@
 </head>
 <body>
 <header class="appbar">
-  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver" id="status">Version：0.9.12</span>
+  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver" id="status">Version：0.9.13</span>
 </header>
 <div class="wrap">
   <div class="note update" id="updateNote" hidden>新しいバージョンがあります。<button onclick="location.reload()">更新する</button></div>
@@ -1000,6 +1003,9 @@ async function loadDeviceKey(){
 }
 // 登録用の文字：DIST-KEY1:記号:公開の鍵（記号はデータを読み込む前なら ?）
 const keyRegText = () => `DIST-KEY1:${DATA && DATA.person ? DATA.person.id : '?'}:${DEVKEY.spki}`;
+// 受取合意用の鍵のカード：題名（と状態の印）だけを見せ、押すと中が開く（はじめはたたむ。開いたかどうかは keyOpen に覚え、描き直しても保つ）
+// 開くと「登録用の文字」は開いたまま、「会ったとき（QR）」は閉じたまま
+let keyOpen = false;
 function keyCard(){
   if(!DEVKEY) return `<div class="card keycard"><div class="rate">受取合意用の鍵を用意しています…</div></div>`;
   if(DEVKEY.error) return `<div class="card keycard"><h2 class="ktitle">受取合意用の鍵</h2><div class="rate">この端末では鍵を作れませんでした（${DEVKEY.error}）。合意コードを出せません</div></div>`;
@@ -1010,11 +1016,11 @@ function keyCard(){
     <div class="code" style="word-break:break-all;font-size:11px;margin-top:8px">${keyRegText()}</div>
     <div class="rate" style="margin-top:6px">あとで会ったとき（または電話で）、Manager の画面に出る指紋と、上の「この端末」（${DEVKEY.fp}）が同じか見比べると確実です</div>
     <details class="fold"><summary>会ったとき（QR を読み取ってもらう）</summary>${codeQR(keyRegText())}</details>`;
-  const kv = `<div class="kv"><span class="kk">この端末</span><span class="key">${DEVKEY.fp}</span>${reg ? `<span class="kk">登録された鍵</span><span class="key">${reg}</span>` : ''}</div>`;
-  if(same) return `<div class="card keycard"><h2 class="ktitle">受取合意用の鍵 ${st}</h2>${kv}
-    <details class="fold"><summary>登録用の文字</summary>${send}</details></div>`;
-  return `<div class="card keycard"><h2 class="ktitle">受取合意用の鍵 ${st}</h2>${kv}
-    <div class="rate" style="margin:8px 0;line-height:1.6">${reg ? '端末を替えたか、鍵を作り直したようです。' : ''}下の［LINE などで送る］で、登録用の文字を Manager に送ってください。Manager が登録して新しいデータを読み込むと「登録された鍵＝この端末の鍵 ✓」になります。それまでは合意コードを出せません</div>${send}</div>`;
+  const kv = `<div class="kv" style="margin-top:8px"><span class="kk">この端末</span><span class="key">${DEVKEY.fp}</span>${reg ? `<span class="kk">登録された鍵</span><span class="key">${reg}</span>` : ''}</div>`;
+  const note = same ? '' : `<div class="rate" style="margin:8px 0">${reg ? '端末を替えたか、鍵を作り直したようです。' : ''}下の［LINE などで送る］で、登録用の文字を Manager に送ってください。Manager が登録して新しいデータを読み込むと「登録された鍵＝この端末の鍵 ✓」になります。それまでは合意コードを出せません</div>`;
+  return `<details class="card keycard keyfold" ${keyOpen ? 'open' : ''} ontoggle="keyOpen = this.open"><summary><h2 class="ktitle">受取合意用の鍵 ${st}</h2></summary>
+    ${kv}${note}
+    <details class="fold" open><summary>登録用の文字</summary>${send}</details></details>`;
 }
 async function shareKey(){
   const text = keyRegText();
@@ -1024,14 +1030,16 @@ async function shareKey(){
 
 function youAgree(){
   const s = agreeFlow.step;
-  let h = keyCard();
+  let h = '';
   const can = DEVKEY && !DEVKEY.error && DATA.person.fingerprint === DEVKEY.fp;
   if(s===0){
     const waits = txs.filter(t=>t.who===ME && t.consent==='wait');
     const nos = txs.filter(t=>t.who===ME && t.consent==='no' && !t.sent);
+    // 並び：支払いの QR を読み取る → 受取合意用の鍵 → 合意待ち・合意しなかったもの
     h += `<div class="card"><h2 style="margin:0 0 4px">支払いの QR を読み取る</h2>
       <div class="rate" style="margin-top:4px">その場では相手の画面の QR を、離れているときは LINE などで届いた文字を読み込みます</div>
       ${readBox('readPay', 'DIST-PAY1:…')}</div>`;
+    h += keyCard();
     h += `<h2>合意待ち</h2>` + (waits.length ? `<div class="card">${waits.map(t=>txRow(t,ME,'you')).join('')}</div>` : `<div class="card s">ありません</div>`);
     h += `<h2>合意しなかったもの（あとから合意できます）</h2>` + (nos.length ? `<div class="card">${nos.map(t=>txRow(t,ME,'you')).join('')}</div>` : `<div class="card s">ありません</div>`);
   } else if(s===1){
@@ -1044,7 +1052,7 @@ function youAgree(){
       <div class="calc">支払日のレート：${shortD(toDate(sl(p.rateDate)))} 10時　1 USDT ＝ ${fp(p.rate)} 円<br>あなたの残高から引く額：<b>${f2(p.usdt)}</b> USDT</div>
       ${diff ? `<div class="s" style="color:var(--out);margin-top:6px">届いているデータの同じ支払いと中身が違います。Manager に確かめてください</div>` : ''}
       ${t && t.hist.length ? `<div class="rate" style="margin-top:6px">履歴：${t.hist.join(' → ')}</div>` : ''}
-      ${can ? '' : `<div class="s" style="color:var(--out);margin-top:6px">この端末の鍵が登録されていないので、合意コードを出せません（上の「受取合意用の鍵」を見てください）</div>`}
+      ${can ? '' : `<div class="s" style="color:var(--out);margin-top:6px">この端末の鍵が登録されていないので、合意コードを出せません（受領タブの「受取合意用の鍵」を見てください）</div>`}
       <button class="btn" onclick="agreeDo('ok')" ${can ? '' : 'disabled'}>合意する</button>
       ${now==='wait' ? `<button class="btn ng" onclick="agreeDo('no')" ${can ? '' : 'disabled'}>合意しない</button>` : ''}
       <button class="btn sub" onclick="agreeFlow={step:0,pay:null};render()">戻る</button></div>`;
@@ -1138,7 +1146,7 @@ function setView(){
   }
   h += `<div class="card"><h2>この端末</h2>
     <button class="btn sub" onclick="forgetPass()" ${localStorage.getItem('dist-manager-pass') ? '' : 'disabled'}>覚えた合言葉を消す</button></div>`;
-  h += `<div class="card"><h2>このアプリについて</h2><div>バージョン：<b>0.9.12</b></div>
+  h += `<div class="card"><h2>このアプリについて</h2><div>バージョン：<b>0.9.13</b></div>
     <button class="btn sub" onclick="checkUpdate(this)">更新を確認</button></div>`;
   return h;
 }
@@ -1572,7 +1580,7 @@ async function restoreFromDrive(){
 async function newerVersion(){
   const html = await (await fetch('./?t=' + Date.now(), {cache: 'no-store'})).text();
   const latest = (html.match(/name="app-version" content="([^"]+)"/) || [])[1];
-  return latest && latest !== '0.9.12' ? latest : null;
+  return latest && latest !== '0.9.13' ? latest : null;
 }
 // 新しい版の Service Worker に入れ替わるまで待つ（最大 ms）。入れ替わったら true
 function waitForNewWorker(reg, ms){
@@ -1611,7 +1619,7 @@ async function checkUpdate(btn){
   try {
     const latest = await newerVersion();
     if(latest){ if(confirm('新しいバージョン（' + latest + '）があります。更新しますか？')) await applyUpdate(); }
-    else alert('最新のバージョンです（0.9.12）');
+    else alert('最新のバージョンです（0.9.13）');
   } catch(e){ alert('更新を確認できませんでした（通信を確認してください）'); }
   finally { btn.disabled = false; }
 }
@@ -1691,7 +1699,7 @@ function setBase(v){
 }
 function showStatus(){
   const st = document.getElementById('status');
-  st.textContent = 'Version：0.9.12';
+  st.textContent = 'Version：0.9.13';
   st.title = DATA ? 'データの作成日時：' + DATA.generatedAt : 'データはまだ読み込んでいません';
 }
 function showNote(){
@@ -1840,7 +1848,10 @@ DISTRIBUTION Agent（あなたの分の残高と、相対の支払いの合意�
 3. 追加したアプリを開き、設定タブの［招待コードを入れる］に招待コードを貼り付ける
 4. 「合言葉を入れてください」と出たら、合言葉を貼り付けて［読み込む］
 ・「この端末に覚える」に印を付けておくと、次から聞かれません
-5. 受領タブの「受取合意用の鍵」の［LINE などで送る］で、出てきた文字をこの LINE に送ってください（相対の支払いの合意に使います）
+5. 受取合意用の鍵を送る（相対の支払いの合意に使います）
+・アプリの下の「受領」タブを開き、「受取合意用の鍵」の題名を押して開く
+・［LINE などで送る］を押して、この LINE を選んで送る
+・こちらで登録して新しいデータが届くと、題名の横に「登録された鍵＝この端末の鍵 ✓」と出ます
 
 合言葉は、ほかの人に見せたり送ったりしないでください。`;
 }
