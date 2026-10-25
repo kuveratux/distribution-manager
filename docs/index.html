@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0a0805">
 <title>DISTRIBUTION Manager</title>
-<meta name="app-version" content="0.9.8">
+<meta name="app-version" content="0.9.9">
 <meta name="apple-mobile-web-app-title" content="DISTRIBUTION Manager">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -246,7 +246,7 @@
 </head>
 <body>
 <header class="appbar">
-  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver" id="status">Version：0.9.8</span>
+  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver" id="status">Version：0.9.9</span>
 </header>
 <div class="wrap">
   <div class="note update" id="updateNote" hidden>新しいバージョンがあります。<button onclick="location.reload()">更新する</button></div>
@@ -280,7 +280,7 @@
   <div class="two"><button class="btn sub" onclick="closeNameDialog(false)">やめる</button><button class="btn" onclick="closeNameDialog(true)">保存</button></div>
 </dialog>
 <dialog id="invDoneDlg">
-  <div class="label" style="font-size:14px;color:var(--text)">データを受け取りました</div>
+  <div class="label" style="font-size:14px;color:var(--text)">招待を受け取りました。アプリをホーム画面に追加してください</div>
   <div class="s" id="invDoneSteps" style="margin-top:6px"></div>
   <div class="label" style="margin-top:10px">招待コード</div><div class="code" id="invDoneCode"></div>
   <button class="btn sub" onclick="copyText(document.getElementById('invDoneCode').textContent,'招待コードをコピーしました')">コードをコピー</button>
@@ -1001,16 +1001,16 @@ function keyCard(){
   if(DEVKEY.error) return `<div class="card"><div class="label">この端末の鍵</div><div class="s">この端末では鍵を作れませんでした（${DEVKEY.error}）。合意コードを出せません</div></div>`;
   const reg = DATA.person.fingerprint, same = reg === DEVKEY.fp;
   const st = !reg ? '<span class="tag wait">未登録</span>' : same ? '<span class="tag ok">登録された鍵＝この端末の鍵 ✓</span>' : '<span class="tag no">登録された鍵と違います</span>';
-  // 登録用の QR（Manager の［鍵を読み取る］で、目の前で読み取ってもらう）と文字（離れているとき）
-  const send = `<div class="label" style="margin-top:6px">Manager に読み取ってもらう QR</div>${codeQR(keyRegText())}
-    <div class="rate" style="text-align:center">Manager の画面に出る指紋が、上の「この端末」（${DEVKEY.fp}）と同じか見比べてください</div>
-    <details class="fold"><summary>離れているとき（文字で送る）</summary><div class="code" style="word-break:break-all;font-size:11px">${keyRegText()}</div>
-    <div class="two"><button class="btn sub" onclick="copyText(keyRegText(), '登録用の文字をコピーしました')">文字をコピー</button><button class="btn sub" onclick="shareKey()">共有で送る</button></div></details>`;
+  // 登録用の文字（LINE などで Manager に送る）。会ったときは QR を読み取ってもらってもよい
+  const send = `<div class="two"><button class="btn" onclick="shareKey()">共有で送る（LINE など）</button><button class="btn sub" onclick="copyText(keyRegText(), '登録用の文字をコピーしました')">文字をコピー</button></div>
+    <div class="code" style="word-break:break-all;font-size:11px;margin-top:8px">${keyRegText()}</div>
+    <div class="rate" style="margin-top:6px">あとで会ったとき（または電話で）、Manager の画面に出る指紋と、上の「この端末」（${DEVKEY.fp}）が同じか見比べると確実です</div>
+    <details class="fold"><summary>会ったとき（QR を読み取ってもらう）</summary>${codeQR(keyRegText())}</details>`;
   const kv = `<div class="kv"><span class="kk">この端末</span><span class="key">${DEVKEY.fp}</span>${reg ? `<span class="kk">登録された鍵</span><span class="key">${reg}</span>` : ''}</div>`;
   if(same) return `<div class="card"><div class="label">この端末の鍵 ${st}</div>${kv}
     <details class="fold"><summary>登録用の文字</summary>${send}</details></div>`;
   return `<div class="card"><div class="label">この端末の鍵 ${st}</div>${kv}
-    <div class="rate" style="margin:8px 0;line-height:1.6">${reg ? '端末を替えたか、鍵を作り直したようです。' : ''}下の QR を Manager に読み取ってもらってください（Manager アプリの設定タブ［鍵を読み取る］）。登録されたあと新しいデータを読み込むと「登録された鍵＝この端末の鍵 ✓」になります。それまでは合意コードを出せません</div>${send}</div>`;
+    <div class="rate" style="margin:8px 0;line-height:1.6">${reg ? '端末を替えたか、鍵を作り直したようです。' : ''}下の［共有で送る］で、登録用の文字を LINE などで Manager に送ってください。Manager が登録して新しいデータを読み込むと「登録された鍵＝この端末の鍵 ✓」になります。それまでは合意コードを出せません</div>${send}</div>`;
 }
 async function shareKey(){
   const text = keyRegText();
@@ -1134,7 +1134,7 @@ function setView(){
   }
   h += `<div class="card"><h2>この端末</h2>
     <button class="btn sub" onclick="forgetPass()" ${localStorage.getItem('dist-manager-pass') ? '' : 'disabled'}>覚えた合言葉を消す</button></div>`;
-  h += `<div class="card"><h2>このアプリについて</h2><div>バージョン：<b>0.9.8</b></div>
+  h += `<div class="card"><h2>このアプリについて</h2><div>バージョン：<b>0.9.9</b></div>
     <button class="btn sub" onclick="checkUpdate(this)">更新を確認</button></div>`;
   return h;
 }
@@ -1568,7 +1568,7 @@ async function restoreFromDrive(){
 async function newerVersion(){
   const html = await (await fetch('./?t=' + Date.now(), {cache: 'no-store'})).text();
   const latest = (html.match(/name="app-version" content="([^"]+)"/) || [])[1];
-  return latest && latest !== '0.9.8' ? latest : null;
+  return latest && latest !== '0.9.9' ? latest : null;
 }
 // 新しい版の Service Worker に入れ替わるまで待つ（最大 ms）。入れ替わったら true
 function waitForNewWorker(reg, ms){
@@ -1607,7 +1607,7 @@ async function checkUpdate(btn){
   try {
     const latest = await newerVersion();
     if(latest){ if(confirm('新しいバージョン（' + latest + '）があります。更新しますか？')) await applyUpdate(); }
-    else alert('最新のバージョンです（0.9.8）');
+    else alert('最新のバージョンです（0.9.9）');
   } catch(e){ alert('更新を確認できませんでした（通信を確認してください）'); }
   finally { btn.disabled = false; }
 }
@@ -1687,7 +1687,7 @@ function setBase(v){
 }
 function showStatus(){
   const st = document.getElementById('status');
-  st.textContent = 'Version：0.9.8';
+  st.textContent = 'Version：0.9.9';
   st.title = DATA ? 'データの作成日時：' + DATA.generatedAt : 'データはまだ読み込んでいません';
 }
 function showNote(){
@@ -1830,12 +1830,13 @@ DISTRIBUTION Agent（あなたの分の残高と、相対の支払いの合意�
 1. 招待リンクを開く
 ・iPhone は Safari、Android は Chrome で開いてください
 ・LINE の中で開いたときは、右上のメニューから「ブラウザで開く」を選んでください
-2. 「合言葉を入れてください」と出たら、合言葉を貼り付けて［読み込む］
+2. アプリをホーム画面に追加する
+・iPhone：共有ボタン →「ホーム画面に追加」
+・Android：メニュー（︙）→「ホーム画面に追加」または「アプリをインストール」
+3. 追加したアプリを開き、設定タブの［招待コードを入れる］に招待コードを貼り付ける
+4. 「合言葉を入れてください」と出たら、合言葉を貼り付けて［読み込む］
 ・「この端末に覚える」に印を付けておくと、次から聞かれません
-3. ホーム画面に追加する
-・iPhone：共有ボタン →「ホーム画面に追加」。追加したアプリを開き、設定タブの［招待コードを入れる］に招待コードを貼り付けてください
-・Android：メニュー（︙）→「ホーム画面に追加」（招待コードは要りません）
-4. 次に会ったとき、アプリの受領タブの「この端末の鍵」の QR を読み取らせてください（相対の支払いの合意に使います）
+5. 受領タブの「この端末の鍵」の［共有で送る（LINE など）］で、出てきた文字をこの LINE に送ってください（相対の支払いの合意に使います）
 
 合言葉は、ほかの人に見せたり送ったりしないでください。`;
 }
@@ -1846,7 +1847,7 @@ DISTRIBUTION Agent（あなたの分の残高と、相対の支払いの合意�
 const allKeys = () => (DATA.keys || []).concat(LOCAL.keys || []);
 function keysCard(){
   let h = `<div class="card"><h2>Agent の鍵（合意コードを確かめる）</h2>
-    <div class="rate">Agent と会って、相手の受領タブの「この端末の鍵」の QR を［鍵を読み取る］で読み取ります。読み取ったら、ここに出る指紋と相手の画面の指紋が同じか見比べてください。読み取った鍵はすぐ合意コードの確かめに使い、［エクセル用に書き出す］→ ブックの③で「鍵」シートにも入ります。相手が合意できるのは、データファイルを作り直して読み込み、相手の画面に ✓ が出てから</div>
+    <div class="rate">Agent から LINE などで届いた「登録用の文字」（DIST-KEY1:…）を貼って登録します（会っているときは、相手の受領タブの QR を［鍵を読み取る］で読み取ってもよい）。登録した鍵はすぐ合意コードの確かめに使い、［エクセル用に書き出す］→ ブックの③で「鍵」シートにも入ります。相手が合意できるのは、データファイルを作り直して読み込み、相手の画面に ✓ が出てから。あとで会ったとき（または電話で）、ここの指紋と相手の画面の指紋が同じか見比べると確実です</div>
     <div class="kv" style="margin-top:8px">`;
   for(const p of people.filter(p => !p.self)){
     const dk = (DATA.keys || []).filter(k => k.person === p.id && k.active).pop();
@@ -1854,9 +1855,9 @@ function keysCard(){
     h += `<span class="kk">${esc(p.name)}（${p.id}）</span><span>${dk ? `<span class="key">${dk.fingerprint}</span>（登録済み）` : '<span class="tag wait">未登録</span>'}${lk ? `<br><span class="key">${lk.fingerprint}</span> <span class="tag">読み取り済み・未反映</span>` : ''}</span>`;
   }
   h += `</div>
-    <button class="btn" onclick="startScan(readKeyCode)">鍵を読み取る（カメラ）</button>
-    <label class="f">離れているとき：Agent から届いた登録用の文字を貼る</label><textarea id="keyIn" rows="3" placeholder="DIST-KEY1:…"></textarea>
-    <button class="btn sub" onclick="readKeyCode(document.getElementById('keyIn').value)">貼った文字で登録</button></div>`;
+    <label class="f">Agent から届いた登録用の文字を貼る</label><textarea id="keyIn" rows="3" placeholder="DIST-KEY1:…"></textarea>
+    <button class="btn" onclick="readKeyCode(document.getElementById('keyIn').value)">貼った文字で登録</button>
+    <button class="btn sub" onclick="startScan(readKeyCode)">会っているとき：鍵の QR を読み取る（カメラ）</button></div>`;
   return h;
 }
 // 登録用の文字を確かめて登録する：人がいるか（自分以外）、P-256 の公開の鍵か、指紋を見比べてもらう
@@ -1874,7 +1875,7 @@ async function readKeyCode(text){
   catch(e){ return toast('DISTRIBUTION の鍵ではありません（P-256 の公開の鍵が読めません）'); }
   const fp = await keyFingerprint(m[2]);
   if(allKeys().some(k => k.person === p.id && k.fingerprint === fp)) return toast(p.name + 'のこの鍵（' + fp + '）は登録済みです');
-  if(!confirm(p.name + '（' + p.id + '）の鍵を登録します。\n\n指紋：' + fp + '\n\n相手の画面の「この端末」の指紋と同じですか？')) return;
+  if(!confirm(p.name + '（' + p.id + '）の鍵を登録しますか？\n\n指紋：' + fp + '\n\n会っているなら、相手の画面の「この端末」の指紋と同じか見比べてください（LINE で受け取ったときは、あとで会ったときか電話で見比べると確実です）')) return;
   LOCAL.keys = (LOCAL.keys || []).filter(k => k.person !== p.id).concat([{person: p.id, publicKey: m[2], fingerprint: fp, since: isoDay(new Date())}]);
   saveLocal();
   const ki = document.getElementById('keyIn'); if(ki) ki.value = '';
@@ -1909,8 +1910,12 @@ function takeInviteFromUrl(){
   return id;
 }
 // 招待を受け取る：ログインなしで読み、合言葉で開けたら、そのファイルを覚える（開けなければ何も変えない）
-async function acceptInvite(id){
+// byCode：［招待コードを入れる］から（ブラウザでも読み込む。PC のブラウザで使うときなど）
+async function acceptInvite(id, byCode){
   if(recvBusy) return;
+  // 招待リンクをブラウザで開いたとき：合言葉は聞かず、読み込まない。ホーム画面に追加して、追加したアプリで招待コードを入れてもらう
+  // （iPhone も Android も同じ手順に。ブラウザで読み込んだデータが、ホーム画面のアプリに引き継がれるとは限らないため）
+  if(!isStandalone() && !byCode){ showInviteDone(id); return; }
   const slot = loadJson('dist-manager-drive');
   if(slot && slot.id === id){ checkPublic(true); return; }   // 同じ招待をもう一度開いた
   recvBusy = true;
@@ -1925,18 +1930,16 @@ async function acceptInvite(id){
     if(!ok) return;   // 合言葉の入力をやめた
     saveJson('dist-manager-drive', {id, name: meta.name, md5: meta.md5Checksum, checkedAt: nowText()});
     recvState = 'ok'; render(true);
-    if(isStandalone()) toast('データを受け取りました（作成 ' + DATA.generatedAt + '）');
-    else showInviteDone(id);
+    toast('データを受け取りました（作成 ' + DATA.generatedAt + '）');
   } catch(e){ alert('受け取れませんでした（' + e.message + '）'); }
   finally { recvBusy = false; }
 }
-// ブラウザで招待リンクを開いたとき：受け取ったうえで、ホーム画面に追加する手順を出す
+// ブラウザで招待リンクを開いたとき：ホーム画面に追加して、追加したアプリで招待コードを入れる手順を出す（ここでは読み込まない）
 function showInviteDone(id){
   const steps = isInAppBrowser()
     ? 'LINE などのアプリの中では、ホーム画面に追加できません。右上のメニューから「ブラウザで開く」（Safari・Chrome）を選んで、招待リンクを開き直してください。'
-    : isIOS()
-      ? '① 共有ボタン →「ホーム画面に追加」　② 追加したアプリを開き、設定タブの［招待コードを入れる］に、下の招待コードを入れる（iPhone は、ホーム画面のアプリと Safari が別々にデータを持つため）'
-      : 'メニュー（︙）→「ホーム画面に追加」または「アプリをインストール」。追加したアプリには、受け取ったデータがそのまま入っています';
+    : (isIOS() ? '① 共有ボタン →「ホーム画面に追加」' : '① メニュー（︙）→「ホーム画面に追加」または「アプリをインストール」')
+      + '　② 追加したアプリを開き、設定タブの［招待コードを入れる］に、下の招待コード（LINE で届いたものと同じ）を貼る　③ 「合言葉を入れてください」と出たら、合言葉を貼って［読み込む］';
   document.getElementById('invDoneSteps').textContent = steps;
   document.getElementById('invDoneCode').textContent = id;
   document.getElementById('invDoneDlg').showModal();
@@ -1967,7 +1970,7 @@ function enterInviteCode(){
   if(t == null) return;
   const id = inviteIdOf(t);
   if(!id){ alert('招待コードの形が正しくありません。Manager から受け取ったコード（またはリンク）をそのまま貼り付けてください。'); return; }
-  acceptInvite(id);
+  acceptInvite(id, true);
 }
 function agentRecvRows(){
   const slot = loadJson('dist-manager-drive');
