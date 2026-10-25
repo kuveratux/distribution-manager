@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0a0805">
 <title>DISTRIBUTION Manager</title>
-<meta name="app-version" content="0.9.2">
+<meta name="app-version" content="0.9.3">
 <meta name="apple-mobile-web-app-title" content="DISTRIBUTION Manager">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -246,7 +246,7 @@
 </head>
 <body>
 <header class="appbar">
-  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver" id="status">Version：0.9.2</span>
+  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver" id="status">Version：0.9.3</span>
 </header>
 <div class="wrap">
   <div class="note update" id="updateNote" hidden>新しいバージョンがあります。<button onclick="location.reload()">更新する</button></div>
@@ -1086,7 +1086,7 @@ function setView(){
     <label class="btn sub" for="fileIn" style="text-align:center">ファイルから読み込む</label>
     <input type="file" id="fileIn" accept=".json,application/json" hidden onchange="importFile(this)">
     ${SCOPE === 'agent' ? '<button class="btn sub" onclick="enterInviteCode()">招待コードを入れる</button>' : ''}
-    <div class="rate" style="margin-top:6px">${SCOPE === 'manager' ? '［最新データを取得］は Google ドライブの Manager 用のファイルを読み直します（初回だけファイルを選びます）。' : '［最新データを取得］は招待で受け取ったファイルを読み直します（開いたときも、新しいデータがあれば自動で読み込みます）。'}［ファイルから読み込む］はスマホの中のファイル（${SCOPE==='manager' ? 'dist-manager_…' : 'dist-agent-…'}.json${SCOPE === 'manager' ? '、バックアップ' : ''}）を選びます</div></div>`;
+    <div class="rate" style="margin-top:6px">${SCOPE === 'manager' ? '［最新データを取得］は Google ドライブの Manager 用のファイルを読み直します（初回だけファイルを選びます）。' : '［最新データを取得］は招待で受け取ったファイルを読み直します（開いたときも、新しいデータがあれば自動で読み込みます）。'}［ファイルから読み込む］はスマホの中のファイル（${SCOPE==='manager' ? 'dist-manager…' : 'dist-agent-…'}.json${SCOPE === 'manager' ? '、バックアップ' : ''}）を選びます</div></div>`;
   h += nameCard();
   if(SCOPE === 'manager'){
     const slot = loadJson('dist-manager-drive');
@@ -1114,7 +1114,7 @@ function setView(){
   h += `<div class="card"><h2>この端末</h2>
     <button class="btn sub" onclick="forgetPass()" ${localStorage.getItem('dist-manager-pass') ? '' : 'disabled'}>覚えた合言葉を消す</button>
     <button class="btn ng" onclick="clearData()" ${DATA ? '' : 'disabled'}>データを消す</button></div>`;
-  h += `<div class="card"><h2>このアプリについて</h2><div>バージョン：<b>0.9.2</b></div>
+  h += `<div class="card"><h2>このアプリについて</h2><div>バージョン：<b>0.9.3</b></div>
     <button class="btn sub" onclick="checkUpdate(this)">更新を確認</button></div>`;
   return h;
 }
@@ -1170,7 +1170,7 @@ async function fetchFromDrive(repick){
     if(auth) await auth;
     let slot = loadJson('dist-manager-drive');
     if(!slot || repick){
-      const p = await Drive.pick('Manager 用のデータファイル（dist-manager_…）を選んでください', 'dist-manager');
+      const p = await Drive.pick('Manager 用のデータファイル（dist-manager.json、テストは dist-manager_test.json）を選んでください', 'dist-manager');
       if(!p) return;
       slot = p[0]; saveJson('dist-manager-drive', slot);
     }
@@ -1484,7 +1484,7 @@ async function restoreFromDrive(){
 async function newerVersion(){
   const html = await (await fetch('./?t=' + Date.now(), {cache: 'no-store'})).text();
   const latest = (html.match(/name="app-version" content="([^"]+)"/) || [])[1];
-  return latest && latest !== '0.9.2' ? latest : null;
+  return latest && latest !== '0.9.3' ? latest : null;
 }
 // 新しい版の Service Worker に入れ替わるまで待つ（最大 ms）。入れ替わったら true
 function waitForNewWorker(reg, ms){
@@ -1523,7 +1523,7 @@ async function checkUpdate(btn){
   try {
     const latest = await newerVersion();
     if(latest){ if(confirm('新しいバージョン（' + latest + '）があります。更新しますか？')) await applyUpdate(); }
-    else alert('最新のバージョンです（0.9.2）');
+    else alert('最新のバージョンです（0.9.3）');
   } catch(e){ alert('更新を確認できませんでした（通信を確認してください）'); }
   finally { btn.disabled = false; }
 }
@@ -1594,7 +1594,7 @@ function setBase(v){
 }
 function showStatus(){
   const st = document.getElementById('status');
-  st.textContent = 'Version：0.9.2';
+  st.textContent = 'Version：0.9.3';
   st.title = DATA ? 'データの作成日時：' + DATA.generatedAt : 'データはまだ読み込んでいません';
 }
 function showNote(){
@@ -1679,9 +1679,9 @@ async function addInvite(input){
   try {
     const meta = await Public.meta(id);
     const name = String(meta.name || '');
-    const m = name.match(/dist-agent-([A-Za-z0-9]+)_/);
+    const m = name.match(/dist-agent-([A-Za-z0-9]+)(?:_|\.json$)/);   // 本番：dist-agent-B.json、テスト：dist-agent-B_test.json
     if(/manager/i.test(name)) inviteMsg = '「' + name + '」は Manager 用のファイルです。Manager 用のファイルは共有にしないでください（ドライブで共有を「制限付き」に戻してください）。';
-    else if(!m) inviteMsg = '「' + name + '」は Agent 用のファイルではないようです（dist-agent-記号_… のファイルの共有のリンクを貼ってください）。';
+    else if(!m) inviteMsg = '「' + name + '」は Agent 用のファイルではないようです（dist-agent-記号.json・dist-agent-記号_test.json のファイルの共有のリンクを貼ってください）。';
     else if(!people.some(p => p.id === m[1] && !p.self)) inviteMsg = '「' + name + '」の記号（' + m[1] + '）の人がデータにいません。';
     else {
       const inv = loadJson('dist-manager-invites') || {};
@@ -1700,7 +1700,7 @@ function forgetInvite(pid){
 function inviteCard(){
   const inv = loadJson('dist-manager-invites') || {};
   let h = `<div class="card"><h2>Agent の招待</h2>
-    <div class="rate">Agent 用のデータのファイル（dist-agent-記号_…）を、ドライブで「リンクを知っている全員」（閲覧者）に共有し、［リンクをコピー］で取ったリンクを貼ってください。ファイル名からだれの分かを見分けます。リンクはこの端末の中にだけ覚えます。合言葉は招待に入らないので、別の手段で伝えてください。</div>
+    <div class="rate">Agent 用のデータのファイル（dist-agent-記号.json、テストは dist-agent-記号_test.json）を、ドライブで「リンクを知っている全員」（閲覧者）に共有し、［リンクをコピー］で取ったリンクを貼ってください。ファイル名からだれの分かを見分けます。リンクはこの端末の中にだけ覚えます。合言葉は招待に入らないので、別の手段で伝えてください。</div>
     <label class="f">Agent 用のファイルの共有のリンク</label><input id="invSrc" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="https://drive.google.com/file/d/…" onchange="addInvite(this)">
     ${inviteMsg ? `<div class="rate" style="margin-top:6px">${inviteMsg}</div>` : ''}`;
   for(const p of people.filter(p => !p.self && inv[p.id])){
