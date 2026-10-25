@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0a0805">
 <title>DISTRIBUTION Manager</title>
-<meta name="app-version" content="0.8.3">
+<meta name="app-version" content="0.9.0">
 <meta name="apple-mobile-web-app-title" content="DISTRIBUTION Manager">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -234,6 +234,10 @@
   #toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:9;max-width:90vw;
     padding:8px 14px;border-radius:10px;background:rgba(20,15,6,.95);border:1px solid var(--edge);color:var(--text);font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.5)}
   .row .mini{flex:none;white-space:nowrap}
+  .row.tap{cursor:pointer}
+  .more{color:var(--gold-2);font-size:11px}
+  .txd{margin:0 0 10px;padding:10px 12px;border-radius:10px;background:rgba(0,0,0,.35);border:1px solid var(--line)}  /* 相対の取引の詳細 */
+  .txd .kv{font-size:12px}
   .row.dsub{padding:4px 0 4px 16px;border-top:none}  /* 詳細の内訳の行（字下げ） */
   .row.dsub .l,.row.dsub .a{font-size:12px;color:var(--muted)}
   .addr{text-decoration:underline dotted;text-underline-offset:3px;cursor:pointer}  /* 押すと名前を付けられるアドレス */
@@ -242,7 +246,7 @@
 </head>
 <body>
 <header class="appbar">
-  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver" id="status">Version：0.8.3</span>
+  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver" id="status">Version：0.9.0</span>
 </header>
 <div class="wrap">
   <div class="note update" id="updateNote" hidden>新しいバージョンがあります。<button onclick="location.reload()">更新する</button></div>
@@ -315,6 +319,12 @@ let agreeFlow = {step:0, pay:null};
 let seq = 100;
 // Agent：出した合意コードの控え（{pay, d, at, code, made}）。端末の中だけ
 let ACKS = [];
+// 表示名：この端末の中だけで変える名前（{記号: 名前}）。空ならデータ（エクセルの「人」）の名前
+let NAMES = {};
+try { NAMES = JSON.parse(localStorage.getItem('dist-manager-names') || '{}'); } catch(e){}
+const dispName = (id, orig) => (NAMES[id] || '').trim() || orig;
+// 取引タブで詳細を開いている取引（相対の取引）
+let openTx = null;
 try { ACKS = JSON.parse(localStorage.getItem('dist-manager-acks') || '[]'); } catch(e){}
 
 const KIND = {recv:'分配', give:'ウォレットへ', move:'相対へ移した', payThird:'相対で支払い', out:'対象外', wout:'ウォレットから送金'};
@@ -586,7 +596,38 @@ function txRow(t, forWho, actions){
     btn = `<div><button class="mini go" onclick="agreeOpen('${t.id}')">あとから合意する</button></div>`;
   if(actions==='you' && t.consent==='wait')
     btn = `<div><button class="mini go" onclick="agreeOpen('${t.id}')">確かめる</button></div>`;
-  return `<div class="row ${t.consent==='cancel'?'cancel':''}"><div><div class="l">${title}${srcTag(t)}${consentTag(t)}</div><div class="s">${sub}</div>${btn}</div><div class="a ${cls}">${amt}</div></div>`;
+  // 相対の取引（相対で支払い・相対へ移した）は、行を押すと下に詳細を開く（ボタン・アドレスを押したときは開かない）
+  const tap = t.kind==='payThird' || t.kind==='move', open = tap && openTx === t.id;
+  const attr = tap ? ` tap" onclick="if(!event.target.closest('button,.addr'))toggleTx('${t.id}')` : '';
+  if(tap) sub += `<br><span class="more">${open ? '▾ 詳細を閉じる' : '▸ 詳細'}</span>`;
+  return `<div class="row ${t.consent==='cancel'?'cancel':''}${attr}"><div><div class="l">${title}${srcTag(t)}${consentTag(t)}</div><div class="s">${sub}</div>${btn}</div><div class="a ${cls}">${amt}</div></div>`
+    + (open ? `<div class="txd">${txDetail(t)}</div>` : '');
+}
+function toggleTx(id){ openTx = openTx === id ? null : id; render(true); }
+// 相対の取引の詳細
+function txDetail(t){
+  const kv = rows => `<div class="kv">${rows.filter(Boolean).map(([k, v]) => `<span class="kk">${k}</span><span style="word-break:break-all">${v}</span>`).join('')}</div>`;
+  if(t.kind === 'move'){
+    const so = (DATA.sotai || []).find(x => x.id === t.to) || {};
+    return kv([['日時', t.d], ['移した先', `${esc(so.name || t.to)}（${t.to}）`], ['アドレス', so.addr ? `<span class="code" style="display:block;padding:4px 6px">${esc(so.addr)}</span>` : '―'],
+      ['金額', fu(t.amt)], ['取引の ID', `<span class="code" style="display:block;padding:4px 6px">${esc(t.srcId)}</span>`]]);
+  }
+  const p = rawPay(t.id.slice(2)) || {}, r = rateOf(t);
+  const state = {self:'自分の分（合意は要りません）', ok:'合意済み ✓', wait:'合意待ち', no:'合意なし', cancel:'取り消し'}[t.consent] + (t.sent ? '（合意コードを送った・反映待ち）' : '');
+  const ack = SCOPE === 'agent' ? ACKS.filter(a => 'p:' + a.pay.id === t.id).pop() : null;
+  return kv([
+    ['支払日時', t.d],
+    SCOPE === 'manager' ? ['支払先', esc(pname(t.who))] : null,
+    ['内容', esc(t.memo)],
+    ['円', fy(t.yen)],
+    ['レート', `${p.rateDate ? sl(p.rateDate) : r.key} 10時　1 USDT ＝ ${fp(r.rate)} 円`],
+    ['USDT', `${f2(usdtOf(t))} USDT（${SCOPE === 'manager' ? (t.consent === 'self' ? '自分の残高' : '預り金') : 'あなたの残高'}から引く${t.consent === 'cancel' ? '・取り消したので引かない' : ''}）`],
+    ['状態', state],
+    ['履歴', (t.histFull || []).length ? t.histFull.join('<br>') : 'なし'],
+    t.consent === 'self' ? null : ['合意コード', t.code ? `<span class="code" style="display:block;padding:4px 6px">${esc(t.code)}</span>` : 'まだありません'],
+    ack ? ['この端末の控え', `${ack.made}　${ack.d === 'ok' ? '合意' : '合意しない'}のコードを出した`] : null,
+    ['ID', esc(p.id || t.id.slice(2))],
+  ]);
 }
 
 /* ---------- 合意のやり取り（支払いの QR・合意コード） ---------- */
@@ -1028,7 +1069,7 @@ function setView(){
   let h = `<div class="card"><h2>データ</h2>`;
   if(DATA){
     h += `<div class="kv">
-      <span class="kk">種類</span><span>${SCOPE_LABEL[DATA.scope]}${DATA.scope==='agent' ? '（' + DATA.person.name + '）' : ''}${DATA.trial ? '　<span class="tag wait">試行データ</span>' : ''}</span>
+      <span class="kk">種類</span><span>${SCOPE_LABEL[DATA.scope]}${DATA.scope==='agent' ? '（' + esc(pname(ME)) + '）' : ''}${DATA.trial ? '　<span class="tag wait">試行データ</span>' : ''}</span>
       <span class="kk">作成</span><span>${DATA.generatedAt}</span>
       <span class="kk">ファイル</span><span style="word-break:break-all">${META.fileName}</span>
       <span class="kk">読み込み</span><span>${META.importedAt}</span></div>`;
@@ -1039,6 +1080,7 @@ function setView(){
     <input type="file" id="fileIn" accept=".json,application/json" hidden onchange="importFile(this)">
     ${SCOPE === 'agent' ? '<button class="btn sub" onclick="enterInviteCode()">招待コードを入れる</button>' : ''}
     <div class="rate" style="margin-top:6px">${SCOPE === 'manager' ? '［最新データを取得］は Google ドライブの Manager 用のファイルを読み直します（初回だけファイルを選びます）。' : '［最新データを取得］は招待で受け取ったファイルを読み直します（開いたときも、新しいデータがあれば自動で読み込みます）。'}［ファイルから読み込む］はスマホの中のファイル（${SCOPE==='manager' ? 'dist-manager_…' : 'dist-agent-…'}.json${SCOPE === 'manager' ? '、バックアップ' : ''}）を選びます</div></div>`;
+  h += nameCard();
   if(SCOPE === 'manager'){
     const slot = loadJson('dist-manager-drive');
     h += `<div class="card"><h2>Google ドライブ</h2>
@@ -1065,9 +1107,24 @@ function setView(){
   h += `<div class="card"><h2>この端末</h2>
     <button class="btn sub" onclick="forgetPass()" ${localStorage.getItem('dist-manager-pass') ? '' : 'disabled'}>覚えた合言葉を消す</button>
     <button class="btn ng" onclick="clearData()" ${DATA ? '' : 'disabled'}>データを消す</button></div>`;
-  h += `<div class="card"><h2>このアプリについて</h2><div>バージョン：<b>0.8.3</b></div>
+  h += `<div class="card"><h2>このアプリについて</h2><div>バージョン：<b>0.9.0</b></div>
     <button class="btn sub" onclick="checkUpdate(this)">更新を確認</button></div>`;
   return h;
+}
+// 表示名のカード（データの下）。Manager は全員、Agent は自分
+const nameList = () => SCOPE === 'manager' ? people : people.filter(p => p.id === ME);
+function nameCard(){
+  if(!DATA) return '';
+  return `<div class="card"><h2>表示名</h2>
+    <div class="rate">${SCOPE === 'manager' ? 'アプリに出す名前' : 'アプリに出すあなたの名前'}を変えられます（この端末の中だけ）。空にすると、データの名前に戻ります</div>
+    ${nameList().map(p => `<label class="f">${SCOPE === 'manager' ? esc(p.orig) + '（' + p.id + (p.self ? '・自分' : '') + '）' : 'あなたの名前（データの名前：' + esc(p.orig) + '）'}</label>
+      <input id="nm_${p.id}" maxlength="20" autocomplete="off" value="${esc(NAMES[p.id] || '')}" placeholder="${esc(p.orig)}">`).join('')}
+    <button class="btn" onclick="saveNames()">保存</button></div>`;
+}
+function saveNames(){
+  nameList().forEach(p => { const v = document.getElementById('nm_' + p.id).value.trim(); if(v && v !== p.orig) NAMES[p.id] = v; else delete NAMES[p.id]; });
+  saveJson('dist-manager-names', NAMES); markDirty();
+  useData(DATA, META); render(true); toast('表示名を保存しました');
 }
 function noData(){
   return `<div class="card center"><div class="s" style="margin:8px 0 4px">データがありません。</div>
@@ -1198,7 +1255,7 @@ async function makeBackup(){
   if(!src) throw new Error('暗号化されたデータファイルを読み込んでから、バックアップを取ってください');
   const pass = await backupPass(src);
   if(!pass) return null;
-  return JSON.stringify(await encryptData({format:'dist-backup', version:1, scope:SCOPE, createdAt:nowText(), src, meta:META, local:LOCAL, book:BOOK}, pass));
+  return JSON.stringify(await encryptData({format:'dist-backup', version:1, scope:SCOPE, createdAt:nowText(), src, meta:META, local:LOCAL, book:BOOK, names:NAMES}, pass));
 }
 async function restoreBackup(json){
   if(json.version > 1) throw new Error('このバックアップは新しい版のアプリ用です。アプリを開き直して更新してから、もう一度読み込んでください');
@@ -1218,6 +1275,7 @@ async function restoreBackup(json){
   if(DATA && !confirm('この端末のデータを、バックアップ（' + b.createdAt + '）の内容に置き換えますか？')) return;
   LOCAL = b.local || {added: [], changes: {}};
   if(b.book){ BOOK = b.book; saveBook(); }
+  if(b.names){ NAMES = b.names; saveJson('dist-manager-names', NAMES); }
   saveJson('dist-manager-local', LOCAL);
   saveJson('dist-manager-src', b.src);
   saveJson('dist-manager-data', {data: d, meta: b.meta});
@@ -1366,7 +1424,7 @@ async function restoreFromDrive(){
 async function newerVersion(){
   const html = await (await fetch('./?t=' + Date.now(), {cache: 'no-store'})).text();
   const latest = (html.match(/name="app-version" content="([^"]+)"/) || [])[1];
-  return latest && latest !== '0.8.3' ? latest : null;
+  return latest && latest !== '0.9.0' ? latest : null;
 }
 // 新しい版の Service Worker に入れ替わるまで待つ（最大 ms）。入れ替わったら true
 function waitForNewWorker(reg, ms){
@@ -1405,7 +1463,7 @@ async function checkUpdate(btn){
   try {
     const latest = await newerVersion();
     if(latest){ if(confirm('新しいバージョン（' + latest + '）があります。更新しますか？')) await applyUpdate(); }
-    else alert('最新のバージョンです（0.8.3）');
+    else alert('最新のバージョンです（0.9.0）');
   } catch(e){ alert('更新を確認できませんでした（通信を確認してください）'); }
   finally { btn.disabled = false; }
 }
@@ -1444,11 +1502,11 @@ function useData(d, meta){
   BASE = ''; try { if(d.trial) BASE = localStorage.getItem('dist-manager-base') || ''; } catch(e){}
   TODAY = BASE ? new Date(BASE + 'T00:00:00') : realToday();
   if(d.scope === 'manager'){
-    people = d.people.map((p,i)=>({id:p.id, name:p.name, ratio:p.ratio, self:!!p.self, color:COLORS[i % COLORS.length]}));
+    people = d.people.map((p,i)=>({id:p.id, name:dispName(p.id, p.name), orig:p.name, ratio:p.ratio, self:!!p.self, color:COLORS[i % COLORS.length]}));
     SOTAI = (d.sotai || []).map(x=>({id:x.id, name:x.name, addr:shortAddr(x.addr)}));
   } else {
     ME = d.person.id;
-    people = [{id:ME, name:d.person.name, ratio:d.person.ratio, color:COLORS[0]}];
+    people = [{id:ME, name:dispName(ME, d.person.name), orig:d.person.name, ratio:d.person.ratio, color:COLORS[0]}];
     SOTAI = [];
   }
   const sorts = loadJson('dist-manager-sort') || {};
@@ -1456,7 +1514,7 @@ function useData(d, meta){
   d.distributions.forEach(x=>txs.push({id:'d:'+x.id, d:sl(x.date), kind:'recv',
     amt: d.scope==='manager' ? x.amount : x.share, shares: d.scope==='manager' ? x.shares : {[ME]: x.share}}));
   d.transfers.forEach(x=>{
-    const t = {id:'t:'+x.id, d:sl(x.date), amt:x.amount};
+    const t = {id:'t:'+x.id, srcId:x.id, d:sl(x.date), amt:x.amount};
     if(x.kind==='wallet') txs.push({...t, kind:'give', who:x.to, match:!!x.matched});
     else if(x.kind==='sotai') txs.push({...t, kind:'move', to:x.to});
     else txs.push({...t, kind:'out', addr:x.to, cls:{self:'self', other:'other'}[x.kind] || null});
@@ -1464,7 +1522,8 @@ function useData(d, meta){
   (d.walletOut || []).forEach(x=>txs.push({id:'w:'+x.id, srcId:x.id, d:sl(x.date), kind:'wout', amt:x.amount, who:ME, addr:x.to, cls:sorts[x.id] || null}));
   payments(d).forEach(x=>txs.push({id:'p:'+x.id, d:sl(x.date), kind:'payThird', yen:x.yen, who:x.who, memo:x.memo, consent:x.status,
     rate:x.rate, rateDate:x.rateDate, usdt:x.usdt, code:x.code, sent:x.sent,
-    hist:(x.history || []).map(h=>shortD(toDate(sl(h.date))) + ' ' + EVENT[h.event])}));
+    hist:(x.history || []).map(h=>shortD(toDate(sl(h.date))) + ' ' + EVENT[h.event]),
+    histFull:(x.history || []).map(h=>sl(h.date) + ' ' + EVENT[h.event])}));
   if(BASE){ const lim = sl(BASE) + ' 23:59'; txs = txs.filter(t => t.d <= lim); }
   showNote();
 }
@@ -1475,7 +1534,7 @@ function setBase(v){
 }
 function showStatus(){
   const st = document.getElementById('status');
-  st.textContent = 'Version：0.8.3';
+  st.textContent = 'Version：0.9.0';
   st.title = DATA ? 'データの作成日時：' + DATA.generatedAt : 'データはまだ読み込んでいません';
 }
 function showNote(){
