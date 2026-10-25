@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0a0805">
 <title>DISTRIBUTION Manager</title>
-<meta name="app-version" content="0.9.15">
+<meta name="app-version" content="0.9.16">
 <meta name="apple-mobile-web-app-title" content="DISTRIBUTION Manager">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -253,7 +253,7 @@
 </head>
 <body>
 <header class="appbar">
-  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver" id="status">Version：0.9.15</span>
+  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver" id="status">Version：0.9.16</span>
 </header>
 <div class="wrap">
   <div class="note update" id="updateNote" hidden>新しいバージョンがあります。<button onclick="location.reload()">更新する</button></div>
@@ -285,6 +285,11 @@
   <div class="label">アドレス</div><div class="code" id="dlgAddr"></div>
   <label class="f">名前（空にすると消します）</label><input id="dlgName" maxlength="30" autocomplete="off">
   <div class="two"><button class="btn sub" onclick="closeNameDialog(false)">やめる</button><button class="btn" onclick="closeNameDialog(true)">保存</button></div>
+</dialog>
+<dialog id="askDlg">
+  <div class="label" style="font-size:14px;color:var(--text)" id="askTitle"></div>
+  <div class="s" id="askMsg" style="margin-top:6px;white-space:pre-wrap"></div>
+  <div class="two" style="margin-top:4px"><button class="btn sub" onclick="askDone(false)">やめる</button><button class="btn ng" id="askOk" onclick="askDone(true)">消す</button></div>
 </dialog>
 <dialog id="invDoneDlg">
   <div class="label" style="font-size:14px;color:var(--text)">招待を受け取りました。アプリをホーム画面に追加してください</div>
@@ -1152,7 +1157,7 @@ function setView(){
   }
   h += `<div class="card"><h2>この端末</h2>
     <button class="btn sub" onclick="forgetPass()" ${localStorage.getItem('dist-manager-pass') ? '' : 'disabled'}>覚えた合言葉を消す</button></div>`;
-  h += `<div class="card"><h2>このアプリについて</h2><div>バージョン：<b>0.9.15</b></div>
+  h += `<div class="card"><h2>このアプリについて</h2><div>バージョン：<b>0.9.16</b></div>
     <button class="btn sub" onclick="checkUpdate(this)">更新を確認</button></div>`;
   return h;
 }
@@ -1224,8 +1229,8 @@ async function fetchFromDrive(repick){
   }
 }
 // 連携を解除：ログインを取り消し、取得先のファイルを忘れる（データとバックアップはそのまま）
-function driveUnlink(){
-  if(!confirm('Google ドライブとの連携を解除しますか？（取得先のファイルを忘れます。この端末のデータはそのままです）')) return;
+async function driveUnlink(){
+  if(!await ask('Google ドライブとの連携を解除しますか？', '取得先のファイルを忘れます。この端末のデータはそのままです', '解除する')) return;
   Drive.signOut(); try { localStorage.removeItem('dist-manager-drive'); } catch(e){}
   render(true);
 }
@@ -1399,7 +1404,9 @@ async function pickExportFolder(){
   toast('相対ファイル連携フォルダを「' + f.name + '」にしました');
   return f;
 }
-function clearExportFolder(){ try { localStorage.removeItem('dist-manager-exportfolder'); } catch(e){} render(true); toast('相対ファイル連携フォルダをやめました（「' + BK_FOLDER + '」に置きます）'); }
+async function clearExportFolder(){
+  if(!await ask('相対ファイル連携フォルダをやめますか？', 'これからの書き出しは「' + BK_FOLDER + '」に置きます。ドライブのフォルダやファイルは消えません', '連携をやめる')) return;
+  try { localStorage.removeItem('dist-manager-exportfolder'); } catch(e){} render(true); toast('相対ファイル連携フォルダをやめました（「' + BK_FOLDER + '」に置きます）'); }
 function exportFolderCard(){
   const f = loadJson('dist-manager-exportfolder');
   return `<div class="card"><h2>相対ファイル連携フォルダ</h2>
@@ -1586,7 +1593,7 @@ async function restoreFromDrive(){
 async function newerVersion(){
   const html = await (await fetch('./?t=' + Date.now(), {cache: 'no-store'})).text();
   const latest = (html.match(/name="app-version" content="([^"]+)"/) || [])[1];
-  return latest && latest !== '0.9.15' ? latest : null;
+  return latest && latest !== '0.9.16' ? latest : null;
 }
 // 新しい版の Service Worker に入れ替わるまで待つ（最大 ms）。入れ替わったら true
 function waitForNewWorker(reg, ms){
@@ -1625,18 +1632,20 @@ async function checkUpdate(btn){
   try {
     const latest = await newerVersion();
     if(latest){ if(confirm('新しいバージョン（' + latest + '）があります。更新しますか？')) await applyUpdate(); }
-    else alert('最新のバージョンです（0.9.15）');
+    else alert('最新のバージョンです（0.9.16）');
   } catch(e){ alert('更新を確認できませんでした（通信を確認してください）'); }
   finally { btn.disabled = false; }
 }
-function forgetPass(){ try { localStorage.removeItem('dist-manager-pass'); localStorage.removeItem('dist-manager-passmode'); } catch(e){} render(true); alert('覚えた合言葉を消しました'); }
+async function forgetPass(){
+  if(!await ask('覚えた合言葉を消しますか？', '次に開いたときから、合言葉を聞かれます')) return;
+  try { localStorage.removeItem('dist-manager-pass'); localStorage.removeItem('dist-manager-passmode'); } catch(e){} render(true); toast('覚えた合言葉を消しました'); }
 // テストのデータを消す（試行データを読み込んでいるときだけ。本番のデータは消せない）
 // 受け取り先（Agent の招待・Manager の取得先）も忘れる：残すと、テストのファイルが更新されたときに自動で読み込み直してしまうため
 // Agent は合意コードの控え・ウォレットの仕分けも消す。端末の鍵（IndexedDB）は残す（本番でもそのまま使う）
-function clearData(){
+async function clearData(){
   if(!DATA || !DATA.trial) return;
-  if(!confirm('この端末のテストのデータを消しますか？（本番を始める前の片付け。テストのデータファイルを読み込めば、また出せます）')) return;
-  if(SCOPE === 'manager' && (LOCAL.added.length || Object.keys(LOCAL.changes).length) && !confirm('まだエクセルに取り込んでいない支払いの入力も消えます。よいですか？（要るときは、先に［エクセル用に書き出す］かバックアップを）')) return;
+  if(!await ask('この端末のテストのデータを消しますか？', '本番を始める前の片付けです。テストのデータファイルを読み込めば、また出せます')) return;
+  if(SCOPE === 'manager' && (LOCAL.added.length || Object.keys(LOCAL.changes).length) && !await ask('まだエクセルに取り込んでいない支払いの入力も消えます。よいですか？', '要るときは、先に［エクセル用に書き出す］かバックアップを取ってください')) return;
   const keys = ['data', 'src', 'local', 'dirty', 'drive', 'base', 'export'].concat(SCOPE === 'manager' ? ['invites'] : ['acks', 'sort']);
   try { keys.forEach(k => localStorage.removeItem('dist-manager-' + k)); } catch(e){}
   forgetTestPass(true);   // 試行データを読み込んでいたので、覚えた合言葉はテストのもの
@@ -1648,10 +1657,10 @@ function clearData(){
 async function clearKeys(){
   if(!DATA || !DATA.trial) return;
   if(SCOPE === 'manager'){
-    if(!(LOCAL.keys || []).length || !confirm('この端末で読み取った鍵（まだエクセルに取り込んでいないもの）を消しますか？')) return;
+    if(!(LOCAL.keys || []).length || !await ask('この端末で読み取った鍵を消しますか？', 'まだエクセルに取り込んでいない鍵（' + LOCAL.keys.length + ' 件）を消します')) return;
     LOCAL.keys = []; saveLocal(); render(true); toast('読み取った鍵を消しました'); return;
   }
-  if(!confirm('この端末の受取合意用の鍵を消して、新しい鍵を作りますか？（本番と共通の鍵なので、本番の「鍵」に登録してあれば、本番でも登録し直しになります）')) return;
+  if(!await ask('受取合意用の鍵を消して、新しい鍵を作りますか？', '本番と共通の鍵なので、本番の「鍵」に登録してあれば、本番でも登録し直しになります')) return;
   try { await keyStore('readwrite', s => s.delete('device')); } catch(e){ alert('鍵を消せませんでした（' + (e && e.message || e) + '）'); return; }
   DEVKEY = null; await loadDeviceKey();
   if(DEVKEY && !DEVKEY.error) toast('新しい鍵を作りました（' + DEVKEY.fp + '）。受領タブの「受取合意用の鍵」から登録用の文字を送り直してください');
@@ -1717,7 +1726,7 @@ function setBase(v){
 }
 function showStatus(){
   const st = document.getElementById('status');
-  st.textContent = 'Version：0.9.15';
+  st.textContent = 'Version：0.9.16';
   st.title = DATA ? 'データの作成日時：' + DATA.generatedAt : 'データはまだ読み込んでいません';
 }
 function showNote(){
@@ -1787,6 +1796,17 @@ function toast(msg){
   el.textContent = msg; el.hidden = false;
   clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.hidden = true; }, 3500);
 }
+// 消す前の確かめ（アプリの中の画面で出す。ブラウザの確認は端末によって出ないことがあるため）。押したほうを true／false で返す
+let askResolve = null;
+function ask(title, msg, ok){
+  document.getElementById('askTitle').textContent = title;
+  document.getElementById('askMsg').textContent = msg || '';
+  document.getElementById('askOk').textContent = ok || '消す';
+  const dlg = document.getElementById('askDlg');
+  if(askResolve) askResolve(false);
+  return new Promise(r => { askResolve = r; dlg.oncancel = () => askDone(false); dlg.showModal(); });
+}
+function askDone(yes){ document.getElementById('askDlg').close(); const r = askResolve; askResolve = null; if(r) r(yes); }
 async function copyText(text, done){
   try { await navigator.clipboard.writeText(text); toast(done); } catch(e){ toast('コピーできませんでした。長押ししてコピーしてください'); }
 }
@@ -1829,9 +1849,9 @@ async function addInvite(pid, input){
     say('ログインなしで読めませんでした。ドライブで、このファイルの共有を「リンクを知っている全員」（閲覧者）にしてください。');
   }
 }
-function forgetInvite(pid){
+async function forgetInvite(pid){
   const side = memoSide();
-  if(!confirm(pname(pid) + 'の' + (side === 'test' ? 'テスト' : '本番') + 'の招待を、この端末から消しますか？（ドライブの共有や、Agent の端末には影響しません）')) return;
+  if(!await ask(pname(pid) + 'の' + (side === 'test' ? 'テスト' : '本番') + 'の招待を、この端末から消しますか？', 'ドライブの共有や、Agent の端末には影響しません')) return;
   const inv = loadInvites(); delete inv[side][pid]; saveJson('dist-manager-invites', inv); delete inviteMsg[pid]; renderKeepOpen();
 }
 function inviteCard(){
