@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0a0805">
 <title>DISTRIBUTION Manager</title>
-<meta name="app-version" content="0.9.13">
+<meta name="app-version" content="0.9.14">
 <meta name="apple-mobile-web-app-title" content="DISTRIBUTION Manager">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -253,7 +253,7 @@
 </head>
 <body>
 <header class="appbar">
-  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver" id="status">Version：0.9.13</span>
+  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver" id="status">Version：0.9.14</span>
 </header>
 <div class="wrap">
   <div class="note update" id="updateNote" hidden>新しいバージョンがあります。<button onclick="location.reload()">更新する</button></div>
@@ -1146,7 +1146,7 @@ function setView(){
   }
   h += `<div class="card"><h2>この端末</h2>
     <button class="btn sub" onclick="forgetPass()" ${localStorage.getItem('dist-manager-pass') ? '' : 'disabled'}>覚えた合言葉を消す</button></div>`;
-  h += `<div class="card"><h2>このアプリについて</h2><div>バージョン：<b>0.9.13</b></div>
+  h += `<div class="card"><h2>このアプリについて</h2><div>バージョン：<b>0.9.14</b></div>
     <button class="btn sub" onclick="checkUpdate(this)">更新を確認</button></div>`;
   return h;
 }
@@ -1580,7 +1580,7 @@ async function restoreFromDrive(){
 async function newerVersion(){
   const html = await (await fetch('./?t=' + Date.now(), {cache: 'no-store'})).text();
   const latest = (html.match(/name="app-version" content="([^"]+)"/) || [])[1];
-  return latest && latest !== '0.9.13' ? latest : null;
+  return latest && latest !== '0.9.14' ? latest : null;
 }
 // 新しい版の Service Worker に入れ替わるまで待つ（最大 ms）。入れ替わったら true
 function waitForNewWorker(reg, ms){
@@ -1619,7 +1619,7 @@ async function checkUpdate(btn){
   try {
     const latest = await newerVersion();
     if(latest){ if(confirm('新しいバージョン（' + latest + '）があります。更新しますか？')) await applyUpdate(); }
-    else alert('最新のバージョンです（0.9.13）');
+    else alert('最新のバージョンです（0.9.14）');
   } catch(e){ alert('更新を確認できませんでした（通信を確認してください）'); }
   finally { btn.disabled = false; }
 }
@@ -1699,7 +1699,7 @@ function setBase(v){
 }
 function showStatus(){
   const st = document.getElementById('status');
-  st.textContent = 'Version：0.9.13';
+  st.textContent = 'Version：0.9.14';
   st.title = DATA ? 'データの作成日時：' + DATA.generatedAt : 'データはまだ読み込んでいません';
 }
 function showNote(){
@@ -1773,56 +1773,71 @@ async function copyText(text, done){
   try { await navigator.clipboard.writeText(text); toast(done); } catch(e){ toast('コピーできませんでした。長押ししてコピーしてください'); }
 }
 
-// ---- Manager：Agent の招待（人ごと。dist-manager-invites ＝ {記号: {id, name}}） ----
+// ---- Manager：Agent の招待（人ごと。dist-manager-invites ＝ {prod: {記号: {id, name}}, test: {…}}。本番とテストは別に覚える） ----
 const inviteUrlOf = id => location.origin + location.pathname.replace(/distribution-manager/i, 'distribution-agent').replace(/index\.html$/, '') + '#invite=' + id;
-let inviteMsg = '';
-async function addInvite(input){
+let inviteMsg = {};   // {記号: 知らせ}
+const sideOfName = name => /_test(?:\.json)?$/i.test(name.replace(/\.json$/i, '')) ? 'test' : 'prod';
+function loadInvites(){
+  const raw = loadJson('dist-manager-invites') || {};
+  if(raw.prod || raw.test) return {prod: raw.prod || {}, test: raw.test || {}};
+  const inv = {prod: {}, test: {}};   // 0.9.13 までの形（{記号: {id, name}}）を本番・テストに分ける
+  for(const [k, v] of Object.entries(raw)) if(v && v.id) inv[sideOfName(String(v.name || ''))][k] = v;
+  return inv;
+}
+// 描き直しても、開いている招待のたたみは開いたまま
+function renderKeepOpen(){
+  const open = [...document.querySelectorAll('details.fold')].map(d => d.open);
+  render(true);
+  document.querySelectorAll('details.fold').forEach((d, i) => { if(open[i]) d.open = true; });
+}
+async function addInvite(pid, input){
   const id = inviteIdOf(input.value);
   if(!input.value.trim()) return;
-  if(!id){ inviteMsg = 'リンクの形が正しくありません。ドライブの［リンクをコピー］で取ったリンクをそのまま貼ってください。'; render(true); return; }
-  inviteMsg = '共有の確認中…'; render(true);
+  const say = t => { inviteMsg[pid] = t; renderKeepOpen(); };
+  if(!id) return say('リンクの形が正しくありません。ドライブの［リンクをコピー］で取ったリンクをそのまま貼ってください。');
+  say('共有の確認中…');
   try {
     const meta = await Public.meta(id);
     const name = String(meta.name || '');
     const m = name.match(/dist-agent-([A-Za-z0-9]+)(?:_|\.json$)/);   // 本番：dist-agent-B.json、テスト：dist-agent-B_test.json
-    if(/manager/i.test(name)) inviteMsg = '「' + name + '」は Manager 用のファイルです。Manager 用のファイルは共有にしないでください（ドライブで共有を「制限付き」に戻してください）。';
-    else if(!m) inviteMsg = '「' + name + '」は Agent 用のファイルではないようです（dist-agent-記号.json・dist-agent-記号_test.json のファイルの共有のリンクを貼ってください）。';
-    else if(!people.some(p => p.id === m[1] && !p.self)) inviteMsg = '「' + name + '」の記号（' + m[1] + '）の人がデータにいません。';
-    else {
-      const inv = loadJson('dist-manager-invites') || {};
-      inv[m[1]] = {id, name}; saveJson('dist-manager-invites', inv);
-      inviteMsg = '共有の確認：読めました（' + name + '）。' + pname(m[1]) + 'の招待を作りました';
-    }
+    if(/manager/i.test(name)) return say('「' + name + '」は Manager 用のファイルです。Manager 用のファイルは共有にしないでください（ドライブで共有を「制限付き」に戻してください）。');
+    if(!m) return say('「' + name + '」は Agent 用のファイルではないようです（dist-agent-' + pid + '.json・dist-agent-' + pid + '_test.json のファイルの共有のリンクを貼ってください）。');
+    if(m[1] !== pid) return say('「' + name + '」は' + (people.some(p => p.id === m[1]) ? pname(m[1]) : '記号 ' + m[1] + ' の人') + 'のファイルです。' + pname(pid) + 'のファイル（dist-agent-' + pid + '.json）のリンクを貼ってください。登録していません。');
+    const side = sideOfName(name), inv = loadInvites();
+    inv[side][pid] = {id, name}; saveJson('dist-manager-invites', inv);
+    say('共有の確認：読めました（' + name + '）。' + pname(pid) + 'の' + (side === 'test' ? 'テスト' : '本番') + 'の招待を作りました'
+      + (side !== memoSide() ? '。いまは' + (memoSide() === 'test' ? 'テスト' : '本番') + 'のデータを読み込んでいるので、招待リンクは' + (side === 'test' ? 'テスト' : '本番') + 'のデータを読み込んだときに出ます' : ''));
   } catch(e){
-    inviteMsg = 'ログインなしで読めませんでした。ドライブで、このファイルの共有を「リンクを知っている全員」（閲覧者）にしてください。';
+    say('ログインなしで読めませんでした。ドライブで、このファイルの共有を「リンクを知っている全員」（閲覧者）にしてください。');
   }
-  render(true);
 }
 function forgetInvite(pid){
-  if(!confirm(pname(pid) + 'の招待を、この端末から消しますか？（ドライブの共有や、Agent の端末には影響しません）')) return;
-  const inv = loadJson('dist-manager-invites') || {}; delete inv[pid]; saveJson('dist-manager-invites', inv); inviteMsg = ''; render(true);
+  const side = memoSide();
+  if(!confirm(pname(pid) + 'の' + (side === 'test' ? 'テスト' : '本番') + 'の招待を、この端末から消しますか？（ドライブの共有や、Agent の端末には影響しません）')) return;
+  const inv = loadInvites(); delete inv[side][pid]; saveJson('dist-manager-invites', inv); delete inviteMsg[pid]; renderKeepOpen();
 }
 function inviteCard(){
-  const inv = loadJson('dist-manager-invites') || {};
+  const side = memoSide(), inv = loadInvites()[side], memo = PASSMEMO[side], kind = side === 'test' ? 'テスト' : '本番';
   let h = `<div class="card"><h2>Agent の招待</h2>
-    <div class="rate">Agent 用のデータのファイル（dist-agent-記号.json、テストは dist-agent-記号_test.json）を、ドライブで「リンクを知っている全員」（閲覧者）に共有し、［リンクをコピー］で取ったリンクを貼ってください。ファイル名からだれの分かを見分けます。リンクはこの端末の中にだけ覚えます。合言葉は招待に入らないので、別の手段で伝えてください。</div>
-    <label class="f">Agent 用のファイルの共有のリンク</label><input id="invSrc" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="https://drive.google.com/file/d/…" onchange="addInvite(this)">
-    ${inviteMsg ? `<div class="rate" style="margin-top:6px">${inviteMsg}</div>` : ''}`;
+    <div class="rate">人ごとのたたみを開き、その人の Agent 用のデータのファイル（dist-agent-記号.json、テストは dist-agent-記号_test.json）を、ドライブで「リンクを知っている全員」（閲覧者）に共有して、［リンクをコピー］で取ったリンクを貼ってください。本番とテストは別々に覚え、いま読み込んでいる側（${kind}）のものを出します。リンクはこの端末の中にだけ覚えます。合言葉は招待に入らないので、別の手段で伝えてください。</div>`;
   // 人ごと：招待文・招待リンク・招待コード・合言葉（読み込んでいるデータの側の控え）。LINE では別々のメッセージで送ると、相手がそのままコピーできる
-  const side = memoSide(), memo = PASSMEMO[side], kind = side === 'test' ? 'テスト' : '本番';
   h += `<div class="rate" style="margin-top:8px">LINE で送るときは、上から順に<b>別々のメッセージで</b>送ってください（招待文 → 招待リンク → 招待コード → 合言葉）。相手は、それぞれを長押しするだけでコピーできます。合言葉の控えは${kind}のものだけ出ています</div>`;
   for(const p of people.filter(p => !p.self)){
     const id = inv[p.id] && inv[p.id].id, url = id ? inviteUrlOf(id) : '';
     let qr = '';
     if(id){ try { const q = qrcode(0, 'M'); q.addData(url); q.make(); qr = q.createSvgTag({cellSize: 4, margin: 4, scalable: true}); } catch(e){} }
     h += `<details class="fold"><summary>${esc(p.name)}（${p.id}）の招待${id ? '' : '（リンクは未登録）'}</summary>
-      <div class="label">① 招待文</div><div class="code" style="white-space:pre-wrap;font-family:inherit">${esc(inviteText(p))}</div>
+      <label class="f">${esc(p.name)} のファイル（dist-agent-${p.id}${side === 'test' ? '_test' : ''}.json）の共有のリンク</label>
+      <input autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="https://drive.google.com/file/d/…" onchange="addInvite('${p.id}', this)">
+      ${id && !inviteMsg[p.id] ? `<div class="rate" style="margin-top:6px">登録済み：${esc(inv[p.id].name)}（貼り直すと差し替えます）</div>` : ''}
+      ${inviteMsg[p.id] ? `<div class="rate" style="margin-top:6px">${esc(inviteMsg[p.id])}</div>` : ''}
+      <div class="label" style="margin-top:10px">① 招待文</div><div class="code" style="white-space:pre-wrap;font-family:inherit">${esc(inviteText(p))}</div>
       <button class="btn sub" onclick="copyText(inviteText(people.find(x => x.id === '${p.id}')), '招待文をコピーしました')">招待文をコピー</button>
       ${id ? `<div class="label" style="margin-top:10px">② 招待リンク</div><div class="inv-qr">${qr}</div><div class="code">${url}</div>
       <button class="btn" onclick="copyText('${url}','招待リンクをコピーしました')">リンクをコピー</button>
       <div class="label" style="margin-top:10px">③ 招待コード（iPhone でホーム画面のアプリに入れるとき）</div><div class="code">${id}</div>
       <button class="btn sub" onclick="copyText('${id}','招待コードをコピーしました')">コードをコピー</button>`
-      : `<div class="rate" style="margin-top:10px">② 招待リンク・③ 招待コードは、上の欄に ${esc(p.name)} のファイル（dist-agent-${p.id}${side === 'test' ? '_test' : ''}.json）の共有のリンクを貼ると出ます</div>`}
+      : `<div class="rate" style="margin-top:10px">② 招待リンク・③ 招待コードは、このたたみのいちばん上の欄にリンクを貼ると出ます</div>`}
       <div class="label" style="margin-top:10px">④ 合言葉（${kind}・この端末の控え）</div>
       <div class="two"><input id="pm_${p.id}" type="password" autocomplete="off" spellcheck="false" value="${esc(memo[p.id] || '')}" placeholder="未登録">
       <button class="btn sub" style="margin-top:0;flex:0 0 auto;width:auto;padding:9px 12px" onclick="const i=document.getElementById('pm_${p.id}'); i.type = i.type === 'password' ? 'text' : 'password'">見る</button>
@@ -1907,9 +1922,7 @@ function savePassMemo(pid){
     if(el.value) PASSMEMO[side][p.id] = el.value; else delete PASSMEMO[side][p.id];
   }
   saveJson('dist-manager-agentpass', PASSMEMO); markDirty();
-  const open = [...document.querySelectorAll('details.fold')].map(d => d.open);
-  render(true);
-  document.querySelectorAll('details.fold').forEach((d, i) => { if(open[i]) d.open = true; });
+  renderKeepOpen();
   toast('合言葉の控え（' + (side === 'test' ? 'テスト' : '本番') + '）を保存しました');
 }
 

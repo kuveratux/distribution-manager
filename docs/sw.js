@@ -3,13 +3,13 @@
 //   （画面だけ先に新しくなると、あとで Service Worker が入れ替わったときに「新しいバージョンがあります」が出てしまうため）
 // - 新しい版のファイルは、入れ替わるとき（install）に、公開サイトの一時保管（最大 10 分）を通さずに取る
 // 保管庫の名前は頭に dist-manager を付け、自分のものだけを消す（同じ kuveratux.github.io のほかのアプリのものは消さない）
-const CACHE = 'dist-manager-shell-0.9.13';
+const CACHE = 'dist-manager-shell-0.9.14';
 const FILES = ['./', 'index.html', 'icon.svg', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'qrcode.js', 'jsqr.js'];
 
 // URL に版の印を付けて取り、印のない名前で保管する
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE)
-    .then(c => Promise.all(FILES.map(f => fetch(new Request(f + '?v=0.9.13', {cache: 'reload'}))
+    .then(c => Promise.all(FILES.map(f => fetch(new Request(f + '?v=0.9.14', {cache: 'reload'}))
       .then(res => { if (!res.ok) throw new Error(f + ': ' + res.status); return c.put(new Request(f), res); }))))
     .then(() => self.skipWaiting()));
 });
