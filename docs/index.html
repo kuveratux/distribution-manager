@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0a0805">
 <title>DISTRIBUTION Manager</title>
-<meta name="app-version" content="0.9.1">
+<meta name="app-version" content="0.9.2">
 <meta name="apple-mobile-web-app-title" content="DISTRIBUTION Manager">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -246,7 +246,7 @@
 </head>
 <body>
 <header class="appbar">
-  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver" id="status">Version：0.9.1</span>
+  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver" id="status">Version：0.9.2</span>
 </header>
 <div class="wrap">
   <div class="note update" id="updateNote" hidden>新しいバージョンがあります。<button onclick="location.reload()">更新する</button></div>
@@ -855,9 +855,12 @@ function mePay(){
       ${t.consent==='no' ? `<div class="s" style="margin-top:8px">${pname(t.who)}は合意しませんでした（合意なし）。この支払いも残高から引きます。金額が違っていれば、取り消して入れ直してください</div>` : ''}
       <button class="btn sub" onclick="payFlow={step:0,tx:null};render()">続けて入れる</button></div>`;
   }
-  h += `<div class="card"><div class="label">エクセルへの反映</div>
-    <div class="s">ここで入れた支払い・合意コード・取り消しは、PC でファイルに書き出してエクセルに取り込みます（未反映 ${LOCAL.added.length + Object.keys(LOCAL.changes).length}件）</div>
-    <button class="btn sub">エクセル用に書き出す（見本では動きません）</button></div>`;
+  const n = exportCount(), ex = loadJson('dist-manager-export');
+  h += `<div class="card"><div class="label">エクセルへの反映（未反映 ${n}件）</div>
+    <div class="rate" style="margin-top:4px;line-height:1.6">ここで入れた支払い・合意・取り消しを 1 つのファイルに書き出し、PC でブックの表紙の［Manager の書き出しを取り込む］から取り込みます。合言葉はデータファイルと同じです。取り込んだあと［データファイルを作る］で作ったデータを読み込むと、この端末の未反映から外れます</div>
+    ${ex ? `<div class="kv" style="margin-top:6px"><span class="kk">前回の書き出し</span><span>${ex.at}（${ex.where}・${ex.n}件）</span></div>` : ''}
+    <button class="btn" onclick="exportToDrive()" ${n ? '' : 'disabled'}>Google ドライブに保存</button>
+    <div class="two"><button class="btn sub" onclick="exportDownload()" ${n ? '' : 'disabled'}>ダウンロードに保存</button><button class="btn sub" onclick="exportShare()" ${n ? '' : 'disabled'}>共有で保存先を選ぶ</button></div></div>`;
   return h;
 }
 function payForm(){
@@ -1111,7 +1114,7 @@ function setView(){
   h += `<div class="card"><h2>この端末</h2>
     <button class="btn sub" onclick="forgetPass()" ${localStorage.getItem('dist-manager-pass') ? '' : 'disabled'}>覚えた合言葉を消す</button>
     <button class="btn ng" onclick="clearData()" ${DATA ? '' : 'disabled'}>データを消す</button></div>`;
-  h += `<div class="card"><h2>このアプリについて</h2><div>バージョン：<b>0.9.1</b></div>
+  h += `<div class="card"><h2>このアプリについて</h2><div>バージョン：<b>0.9.2</b></div>
     <button class="btn sub" onclick="checkUpdate(this)">更新を確認</button></div>`;
   return h;
 }
@@ -1235,12 +1238,12 @@ function markDirty(){ try { localStorage.setItem('dist-manager-dirty', '1'); } c
 const isDirty = () => { try { return localStorage.getItem('dist-manager-dirty') === '1'; } catch(e){ return false; } };
 function backupDone(where){ saveJson('dist-manager-bk', {at: nowText(), where}); try { localStorage.removeItem('dist-manager-dirty'); } catch(e){} render(true); }
 const b64e = u8 => { let t = ''; for(let i = 0; i < u8.length; i += 0x8000) t += String.fromCharCode(...u8.subarray(i, i + 0x8000)); return btoa(t); };
-async function encryptData(obj, pass){
+async function encryptData(obj, pass, format = 'dist-backup-enc'){
   const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
   const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass.normalize('NFC')), 'PBKDF2', false, ['deriveKey']);
   const key = await crypto.subtle.deriveKey({name:'PBKDF2', hash:'SHA-256', salt, iterations:600000}, base, {name:'AES-GCM', length:256}, false, ['encrypt']);
   const ct = new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM', iv}, key, new TextEncoder().encode(JSON.stringify(obj))));
-  return {format:'dist-backup-enc', version:1, kdf:{name:'PBKDF2', hash:'SHA-256', iterations:600000, salt:b64e(salt)}, cipher:{name:'AES-GCM', iv:b64e(iv)}, data:b64e(ct)};
+  return {format, version:1, kdf:{name:'PBKDF2', hash:'SHA-256', iterations:600000, salt:b64e(salt)}, cipher:{name:'AES-GCM', iv:b64e(iv)}, data:b64e(ct)};
 }
 // バックアップの合言葉：元のデータファイルで正しいと確かめたものだけを使う（打ち間違いで戻せないバックアップを作らない）
 async function backupPass(src){
@@ -1288,6 +1291,55 @@ async function restoreBackup(json){
   useData(d, b.meta);
   tab = 'bal'; render();
   alert('バックアップ（' + b.createdAt + '）から戻しました');
+}
+/* ---------- エクセル用の書き出し（Manager） ---------- */
+// まだエクセルに取り込まれていない、アプリで入れた支払い（added）と、データの支払いへの変更（changes：合意・合意しない・取り消し）を
+// 1 つのファイルにする。合言葉はデータファイルと同じ（PC のプログラムが Manager 用の合言葉で開く）。ブックの表紙［Manager の書き出しを取り込む］で取り込む
+// 取り込んだ支払いは、次のデータファイルを読み込むと、この端末から自動で外れる
+const exportCount = () => LOCAL.added.length + Object.keys(LOCAL.changes).length;
+const exportName = () => { const d = new Date(); return `DISTRIBUTION_excel_${isoDay(d).replace(/-/g,'')}-${pad2(d.getHours())}${pad2(d.getMinutes())}.json`; };
+async function makeExport(){
+  if(!exportCount()) throw new Error('エクセルに取り込んでいない支払い・合意はありません');
+  const src = loadJson('dist-manager-src');
+  if(!src) throw new Error('暗号化されたデータファイルを読み込んでから、書き出してください');
+  const pass = await backupPass(src);
+  if(!pass) return null;
+  const changes = Object.entries(LOCAL.changes).map(([id, c]) => ({id, status: c.status, code: c.code || '', added: c.added}));
+  return JSON.stringify(await encryptData({format:'dist-export', version:1, createdAt: nowText(), dataGeneratedAt: DATA.generatedAt, added: LOCAL.added, changes}, pass, 'dist-export-enc'));
+}
+function exportDone(where, name){ saveJson('dist-manager-export', {at: nowText(), where, name, n: exportCount()}); render(true); }
+async function exportToDrive(){
+  try {
+    const auth = Drive.authorizeNow();
+    if(auth) await auth;
+    const text = await makeExport();
+    if(!text) return;
+    const name = exportName();
+    await driveSave(name, text, false);
+    exportDone('Google ドライブ', name);
+    alert('Google ドライブの「' + BK_FOLDER + '」に ' + name + ' を保存しました。PC でブックの表紙［Manager の書き出しを取り込む］から取り込んでください');
+  } catch(e){ alert(e.message); }
+}
+async function exportDownload(){
+  try {
+    const text = await makeExport();
+    if(!text) return;
+    const name = exportName(), a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], {type:'application/json'}));
+    a.download = name; document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+    exportDone('ダウンロード', name);
+  } catch(e){ alert(e.message); }
+}
+async function exportShare(){
+  try {
+    const text = await makeExport();
+    if(!text) return;
+    const name = exportName(), file = new File([text], name, {type:'application/json'});
+    if(!navigator.canShare || !navigator.canShare({files:[file]})) throw new Error('この端末では共有で保存できません。［ダウンロードに保存］を使ってください');
+    await navigator.share({files:[file], title:'DISTRIBUTION エクセル用の書き出し'});
+    exportDone('共有', name);
+  } catch(e){ if(e.name !== 'AbortError') alert(e.message); }
 }
 function backupDownload(){
   makeBackup().then(text => {
@@ -1399,17 +1451,21 @@ async function gfolder(create){
   if(f || !create) return f;
   return (await gfetch(G_API + '?fields=id', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name: BK_FOLDER, mimeType:'application/vnd.google-apps.folder'})})).json();
 }
+// 「DISTRIBUTION バックアップ」フォルダにファイルを保存する。replace：同じ名前のファイルがあれば上書き
+async function driveSave(name, text, replace){
+  const folder = await gfolder(true);
+  const old = replace ? await gfind(`name='${gq(name)}' and '${folder.id}' in parents and trashed=false`) : null;
+  const bd = 'dist' + Date.now();
+  const body = `--${bd}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(old ? {} : {name, parents: [folder.id]})}\r\n--${bd}\r\nContent-Type: application/json\r\n\r\n${text}\r\n--${bd}--`;
+  await gfetch((old ? G_UP + '/' + old.id : G_UP) + '?uploadType=multipart&fields=id', {method: old ? 'PATCH' : 'POST', headers: {'Content-Type': 'multipart/related; boundary=' + bd}, body});
+}
 async function backupToDrive(){
   try {
     const auth = Drive.authorizeNow();  // 押した直後にログインの画面を開く
     if(auth) await auth;
     const text = await makeBackup();
     if(!text) return;
-    const folder = await gfolder(true);
-    const old = await gfind(`name='${gq(BK_NAME)}' and '${folder.id}' in parents and trashed=false`);
-    const bd = 'dist' + Date.now();
-    const body = `--${bd}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(old ? {} : {name: BK_NAME, parents: [folder.id]})}\r\n--${bd}\r\nContent-Type: application/json\r\n\r\n${text}\r\n--${bd}--`;
-    await gfetch((old ? G_UP + '/' + old.id : G_UP) + '?uploadType=multipart&fields=id', {method: old ? 'PATCH' : 'POST', headers: {'Content-Type': 'multipart/related; boundary=' + bd}, body});
+    await driveSave(BK_NAME, text, true);
     backupDone('Google ドライブ');
     alert('Google ドライブの「' + BK_FOLDER + '」に保存しました');
   } catch(e){ alert(e.message); }
@@ -1428,7 +1484,7 @@ async function restoreFromDrive(){
 async function newerVersion(){
   const html = await (await fetch('./?t=' + Date.now(), {cache: 'no-store'})).text();
   const latest = (html.match(/name="app-version" content="([^"]+)"/) || [])[1];
-  return latest && latest !== '0.9.1' ? latest : null;
+  return latest && latest !== '0.9.2' ? latest : null;
 }
 // 新しい版の Service Worker に入れ替わるまで待つ（最大 ms）。入れ替わったら true
 function waitForNewWorker(reg, ms){
@@ -1467,7 +1523,7 @@ async function checkUpdate(btn){
   try {
     const latest = await newerVersion();
     if(latest){ if(confirm('新しいバージョン（' + latest + '）があります。更新しますか？')) await applyUpdate(); }
-    else alert('最新のバージョンです（0.9.1）');
+    else alert('最新のバージョンです（0.9.2）');
   } catch(e){ alert('更新を確認できませんでした（通信を確認してください）'); }
   finally { btn.disabled = false; }
 }
@@ -1538,7 +1594,7 @@ function setBase(v){
 }
 function showStatus(){
   const st = document.getElementById('status');
-  st.textContent = 'Version：0.9.1';
+  st.textContent = 'Version：0.9.2';
   st.title = DATA ? 'データの作成日時：' + DATA.generatedAt : 'データはまだ読み込んでいません';
 }
 function showNote(){
