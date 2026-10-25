@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0a0805">
 <title>DISTRIBUTION Manager</title>
-<meta name="app-version" content="0.9.14">
+<meta name="app-version" content="0.9.15">
 <meta name="apple-mobile-web-app-title" content="DISTRIBUTION Manager">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -253,7 +253,7 @@
 </head>
 <body>
 <header class="appbar">
-  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver" id="status">Version：0.9.14</span>
+  <img class="logo" src="icon.svg" alt=""><h1>DISTRIBUTION</h1><span class="role">Manager</span><span class="appver" id="status">Version：0.9.15</span>
 </header>
 <div class="wrap">
   <div class="note update" id="updateNote" hidden>新しいバージョンがあります。<button onclick="location.reload()">更新する</button></div>
@@ -1143,10 +1143,16 @@ function setView(){
         ? '消えるもの：読み込んだデータ、まだエクセルに取り込んでいない支払い・合意、取得先、Agent の招待、Agent の合言葉の控え（テスト）、覚えた合言葉（テスト）、基準日。残るもの：表示名・アドレスの名前・Agent の合言葉の控え（本番）'
         : '消えるもの：読み込んだデータ、合意コードの控え、ウォレットの仕分け、受け取り先（招待）、覚えた合言葉（テスト）、基準日。残るもの：<b>受取合意用の鍵</b>（本番でもそのまま使えます）、表示名・アドレスの名前'}。本番のデータを読み込んでいるときは出ません</div>
       <button class="btn ng" onclick="clearData()">テストのデータを消す</button></div>`;
+    const nk = (LOCAL.keys || []).length;
+    h += `<div class="card"><h2>鍵だけ消す（試行データのみ）</h2>
+      <div class="rate">${SCOPE === 'manager'
+        ? `この端末で読み取って、まだエクセルに取り込んでいない鍵（いま ${nk} 件）だけを消します。データ・支払いの入力・招待などは残ります。エクセルの「テスト_鍵」の表に入っている鍵は、エクセルで消してください`
+        : `この端末の受取合意用の鍵だけを消して、新しい鍵を作ります。データ・合言葉・招待などは残ります。<b>この鍵は本番と共通</b>なので、本番の「鍵」に登録してあれば、本番でも登録し直しになります`}</div>
+      <button class="btn ng" onclick="clearKeys()" ${SCOPE === 'manager' && !nk ? 'disabled' : ''}>鍵だけ消す</button></div>`;
   }
   h += `<div class="card"><h2>この端末</h2>
     <button class="btn sub" onclick="forgetPass()" ${localStorage.getItem('dist-manager-pass') ? '' : 'disabled'}>覚えた合言葉を消す</button></div>`;
-  h += `<div class="card"><h2>このアプリについて</h2><div>バージョン：<b>0.9.14</b></div>
+  h += `<div class="card"><h2>このアプリについて</h2><div>バージョン：<b>0.9.15</b></div>
     <button class="btn sub" onclick="checkUpdate(this)">更新を確認</button></div>`;
   return h;
 }
@@ -1580,7 +1586,7 @@ async function restoreFromDrive(){
 async function newerVersion(){
   const html = await (await fetch('./?t=' + Date.now(), {cache: 'no-store'})).text();
   const latest = (html.match(/name="app-version" content="([^"]+)"/) || [])[1];
-  return latest && latest !== '0.9.14' ? latest : null;
+  return latest && latest !== '0.9.15' ? latest : null;
 }
 // 新しい版の Service Worker に入れ替わるまで待つ（最大 ms）。入れ替わったら true
 function waitForNewWorker(reg, ms){
@@ -1619,7 +1625,7 @@ async function checkUpdate(btn){
   try {
     const latest = await newerVersion();
     if(latest){ if(confirm('新しいバージョン（' + latest + '）があります。更新しますか？')) await applyUpdate(); }
-    else alert('最新のバージョンです（0.9.14）');
+    else alert('最新のバージョンです（0.9.15）');
   } catch(e){ alert('更新を確認できませんでした（通信を確認してください）'); }
   finally { btn.disabled = false; }
 }
@@ -1637,6 +1643,18 @@ function clearData(){
   LOCAL = {added: [], changes: {}}; ACKS = []; BASE = '';
   DATA = null; META = null; people = []; SOTAI = []; txs = []; render();
   alert('テストのデータを消しました。本番のデータファイルを読み込んでください（' + (SCOPE === 'manager' ? '［最新データを取得］で dist-manager.json を選ぶ' : '本番の招待リンクを開くか、［招待コードを入れる］') + '）');
+}
+// 鍵だけ消す（試行データを読み込んでいるときだけ）。Manager：読み取ってまだエクセルに取り込んでいない鍵、Agent：端末の鍵（IndexedDB）→ 新しく作る
+async function clearKeys(){
+  if(!DATA || !DATA.trial) return;
+  if(SCOPE === 'manager'){
+    if(!(LOCAL.keys || []).length || !confirm('この端末で読み取った鍵（まだエクセルに取り込んでいないもの）を消しますか？')) return;
+    LOCAL.keys = []; saveLocal(); render(true); toast('読み取った鍵を消しました'); return;
+  }
+  if(!confirm('この端末の受取合意用の鍵を消して、新しい鍵を作りますか？（本番と共通の鍵なので、本番の「鍵」に登録してあれば、本番でも登録し直しになります）')) return;
+  try { await keyStore('readwrite', s => s.delete('device')); } catch(e){ alert('鍵を消せませんでした（' + (e && e.message || e) + '）'); return; }
+  DEVKEY = null; await loadDeviceKey();
+  if(DEVKEY && !DEVKEY.error) toast('新しい鍵を作りました（' + DEVKEY.fp + '）。受領タブの「受取合意用の鍵」から登録用の文字を送り直してください');
 }
 // データファイルの形 → 画面の作りに合わせた形
 const shortAddr = a => a && a.length > 14 ? a.slice(0,6) + '…' + a.slice(-4) : (a || '');
@@ -1699,7 +1717,7 @@ function setBase(v){
 }
 function showStatus(){
   const st = document.getElementById('status');
-  st.textContent = 'Version：0.9.14';
+  st.textContent = 'Version：0.9.15';
   st.title = DATA ? 'データの作成日時：' + DATA.generatedAt : 'データはまだ読み込んでいません';
 }
 function showNote(){
